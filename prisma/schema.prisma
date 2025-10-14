@@ -1,0 +1,290 @@
+
+// Sistema Multi-tenant para Distribuidora de Bebidas
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+    provider = "prisma-client-js"
+    binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+    // output = "/home/ubuntu/distribuidora_multi_tenant/nextjs_space/node_modules/.prisma/client"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+// ===== MULTI-TENANT & AUTH =====
+
+model Company {
+  id              String   @id @default(uuid())
+  name            String
+  slug            String   @unique // URL amigável para cardápio público
+  cnpj_cpf        String?  @unique
+  email           String?
+  phone           String?
+  address         String?
+  city            String?
+  state           String?
+  zip_code        String?
+  logo_url        String? // URL da logo no S3
+  settings        Json?    // Configurações customizáveis
+  active          Boolean  @default(true)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  // Relations
+  users            User[]
+  categories       Category[]
+  products         Product[]
+  orders           Order[]
+  financial_entries FinancialEntry[]
+  audit_logs       AuditLog[]
+  customers        Customer[]
+
+  @@map("companies")
+}
+
+model User {
+  id              String   @id @default(uuid())
+  company_id      String?  // Opcional: null para ADMINISTRADOR
+  email           String   @unique
+  password        String   // Hash bcrypt
+  first_name      String
+  last_name       String
+  phone           String?
+  role            UserRole @default(ATENDENTE)
+  active          Boolean  @default(true)
+  is_primary_admin Boolean @default(false) // True para o ADMINISTRADOR principal (não pode ser excluído)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  // Relations
+  company         Company?   @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  orders          Order[]
+  audit_logs      AuditLog[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMINISTRADOR  // Acesso total - Master do sistema
+  SUB_MASTER     // Administrador secundário (pode ser excluído)
+  MASTER_DIST    // Gerente/Administrador da distribuidora
+  ATENDENTE      // Apenas pedidos
+  FINANCEIRO     // Apenas financeiro e relatórios  
+  LEITURA        // Somente leitura
+}
+
+// ===== CLIENTES =====
+
+model Customer {
+  id              String   @id @default(uuid())
+  company_id      String
+  email           String
+  password        String   // Hash bcrypt
+  name            String
+  phone           String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  // Relations
+  company         Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  orders          Order[]  @relation("CustomerOrders")
+
+  @@unique([company_id, email])
+  @@map("customers")
+}
+
+// ===== CATÁLOGO/CARDÁPIO =====
+
+model Category {
+  id              String   @id @default(uuid())
+  company_id      String
+  name            String
+  description     String?
+  image_url       String?
+  sort_order      Int?     @default(0)
+  active          Boolean  @default(true)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  // Relations
+  company         Company   @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  products        Product[]
+
+  @@unique([company_id, name])
+  @@map("categories")
+}
+
+model Product {
+  id              String   @id @default(uuid())
+  company_id      String
+  category_id     String
+  name            String
+  description     String?
+  sku             String?  // Código de barras/SKU
+  base_price      Decimal  @db.Decimal(10,2) // Preço base
+  image_url       String?
+  active          Boolean  @default(true)
+  sort_order      Int?     @default(0)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  // Relations
+  company         Company           @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  category        Category          @relation(fields: [category_id], references: [id], onDelete: Cascade)
+  variants        ProductVariant[]
+  order_items     OrderItem[]
+
+  @@unique([company_id, sku])
+  @@map("products")
+}
+
+model ProductVariant {
+  id              String   @id @default(uuid())
+  product_id      String
+  name            String   // Ex: "350ml", "Caixa c/ 12 unidades"
+  volume          String?  // Ex: "350ml", "1L", "2L"
+  unit_type       String?  // Ex: "unidade", "caixa"
+  price_modifier  Decimal  @db.Decimal(10,2) @default(0) // Modificador do preço base
+  image_url       String?  // URL da imagem específica da variante
+  stock_quantity  Int?     @default(0)
+  active          Boolean  @default(true)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  // Relations
+  product         Product     @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  order_items     OrderItem[]
+
+  @@map("product_variants")
+}
+
+// ===== PEDIDOS =====
+
+model Order {
+  id                    String       @id @default(uuid())
+  company_id            String
+  user_id               String?      // Usuário que criou (interno) ou null (público)
+  customer_id           String?      // Cliente (público) que criou
+  customer_name         String
+  customer_email        String
+  customer_phone        String
+  delivery_address      Json?        // Endereço de entrega completo
+  delivery_type         DeliveryType @default(DELIVERY)
+  payment_method        PaymentMethod
+  subtotal              Decimal      @db.Decimal(10,2)
+  delivery_fee          Decimal      @db.Decimal(10,2) @default(0)
+  total_amount          Decimal      @db.Decimal(10,2)
+  status                OrderStatus  @default(RECEBIDO)
+  notes                 String?      // Observações do cliente
+  created_at            DateTime     @default(now())
+  updated_at            DateTime     @updatedAt
+
+  // Relations
+  company               Company       @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  user                  User?         @relation(fields: [user_id], references: [id])
+  customer              Customer?     @relation("CustomerOrders", fields: [customer_id], references: [id])
+  order_items           OrderItem[]
+  financial_entries     FinancialEntry[]
+
+  @@map("orders")
+}
+
+enum DeliveryType {
+  DELIVERY  // Entrega
+  RETIRADA    // Retirada
+}
+
+enum PaymentMethod {
+  PIX
+  PROMISSORIA
+  CARTAO_ENTREGA  // Cartão na entrega
+  DINHEIRO
+  BOLETO
+}
+
+enum OrderStatus {
+  RECEBIDO
+  EM_SEPARACAO
+  PRONTO  
+  EM_ROTA
+  ENTREGUE
+  CANCELADO
+}
+
+model OrderItem {
+  id                String   @id @default(uuid())
+  order_id          String
+  product_id        String
+  variant_id        String?
+  quantity          Int
+  unit_price        Decimal  @db.Decimal(10,2) // Preço capturado no momento
+  total_price       Decimal  @db.Decimal(10,2)
+  notes             String?  // Observações específicas do item
+
+  // Relations
+  order             Order           @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  product           Product         @relation(fields: [product_id], references: [id])
+  variant           ProductVariant? @relation(fields: [variant_id], references: [id])
+
+  @@map("order_items")
+}
+
+// ===== FINANCEIRO =====
+
+model FinancialEntry {
+  id              String      @id @default(uuid())
+  company_id      String
+  order_id        String?     // Vinculado a pedido (opcional)
+  type            EntryType
+  amount          Decimal     @db.Decimal(10,2)
+  description     String
+  category        String?     // Centro de custo
+  payment_method  PaymentMethod?
+  due_date        DateTime?   // Data de vencimento  
+  paid_date       DateTime?   // Data de pagamento
+  status          EntryStatus @default(PENDENTE)
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
+
+  // Relations
+  company         Company     @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  order           Order?      @relation(fields: [order_id], references: [id])
+
+  @@map("financial_entries")
+}
+
+enum EntryType {
+  RECEITA   // Contas a receber
+  DESPESA   // Contas a pagar
+}
+
+enum EntryStatus {
+  PENDENTE
+  PAGO
+  VENCIDO
+  CANCELADO
+}
+
+// ===== AUDITORIA =====
+
+model AuditLog {
+  id              String   @id @default(uuid())
+  company_id      String
+  user_id         String?
+  entity_type     String   // Ex: "Order", "Product", "User"
+  entity_id       String   // ID da entidade modificada
+  action          String   // Ex: "CREATE", "UPDATE", "DELETE"
+  old_values      Json?    // Valores anteriores
+  new_values      Json?    // Valores novos
+  ip_address      String?
+  user_agent      String?
+  created_at      DateTime @default(now())
+
+  // Relations
+  company         Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  user            User?    @relation(fields: [user_id], references: [id])
+
+  @@map("audit_logs")
+}
