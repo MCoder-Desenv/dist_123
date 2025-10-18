@@ -33,6 +33,11 @@ export function AuthProvider({ children, companyId }: { children: React.ReactNod
     }, [key]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      setLoading(false);
+      return;
+    }
+    
     try {
       const raw = localStorage.getItem(key);
       if (raw) setUserState(JSON.parse(raw));
@@ -54,8 +59,10 @@ export function AuthProvider({ children, companyId }: { children: React.ReactNod
 
   const setUser = (u: Customer | null) => {
     setUserState(u);
-    if (u) localStorage.setItem(key, JSON.stringify(u));
-    else localStorage.removeItem(key);
+    if (typeof window !== 'undefined') {
+      if (u) localStorage.setItem(key, JSON.stringify(u));
+      else localStorage.removeItem(key);
+    }
   };
 
   const login = (u: Customer) => setUser(u);

@@ -9,3 +9,4 @@ export function RootProviders({ children, companyId }: { children: React.ReactNo
     </Providers>
   );
 }
+
