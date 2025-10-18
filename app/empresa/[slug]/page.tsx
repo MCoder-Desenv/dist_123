@@ -1,6 +1,6 @@
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import ClientProviders from '@/components/ClientProviders';
+import { RootProviders } from '@/components/RootProviders';
 import { PublicMenu } from '@/components/public/public-menu';
 import { prisma } from '@/lib/db';
 
@@ -46,7 +46,7 @@ export default async function PublicMenuPage({ params }: Props) {
   }
 
   return (
-    <ClientProviders companyId={company.id}>
+    <RootProviders companyId={company.id}>
       <PublicMenu
         slug={params.slug}
         company={{
@@ -58,6 +58,6 @@ export default async function PublicMenuPage({ params }: Props) {
           state: company.state ?? undefined,
         }}
       />
-    </ClientProviders>
+    </RootProviders>
   );
 }

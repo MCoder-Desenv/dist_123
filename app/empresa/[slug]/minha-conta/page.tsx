@@ -1,7 +1,7 @@
 // app/empresa/[slug]/minha-conta/page.tsx
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import ClientProviders from '@/components/ClientProviders'; // ajuste o caminho se necessário
+import { RootProviders } from '@/components/RootProviders'; // ajuste o caminho se necessário
 import { CustomerAccount } from '@/components/public/customer-account';
 import { prisma } from '@/lib/db';
 
@@ -44,7 +44,7 @@ export default async function CustomerAccountPage({ params }: Props) {
   }
 
   return (
-    <ClientProviders companyId={company.id}>
+    <RootProviders companyId={company.id}>
       <CustomerAccount
         company={{
           id: company.id,
@@ -53,6 +53,6 @@ export default async function CustomerAccountPage({ params }: Props) {
           logo_url: company.logo_url ?? undefined,
         }}
       />
-    </ClientProviders>
+    </RootProviders>
   );
 }

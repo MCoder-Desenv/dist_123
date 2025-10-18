@@ -1,6 +1,6 @@
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import ClientProviders from '@/components/ClientProviders';
+import { RootProviders } from '@/components/RootProviders';
 import { CheckoutPage } from '@/components/public/checkout-page';
 import { prisma } from '@/lib/db';
 
@@ -43,13 +43,13 @@ export default async function CheckoutPageRoute({ params }: Props) {
   }
 
   return (
-    <ClientProviders companyId={company.id}>
+    <RootProviders companyId={company.id}>
       <CheckoutPage
         company={{
           ...company,
           logo_url: company.logo_url ?? undefined,
         }}
       />
-    </ClientProviders>
+    </RootProviders>
   );
 }

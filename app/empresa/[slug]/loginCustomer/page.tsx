@@ -1,7 +1,7 @@
 // app/empresa/[slug]/loginCustomer/page.tsx
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import ClientProviders from '@/components/ClientProviders';
+import { RootProviders } from '@/components/RootProviders';
 import LoginCustomer from '@/components/public/login-customer';
 import { prisma } from '@/lib/db';
 
@@ -26,7 +26,7 @@ export default async function LoginCustomerPage({ params }: Props) {
   if (!company) notFound();
 
   return (
-    <ClientProviders companyId={company.id}>
+    <RootProviders companyId={company.id}>
       <LoginCustomer
         slug={params.slug}
         company={{
@@ -36,6 +36,6 @@ export default async function LoginCustomerPage({ params }: Props) {
           logo_url: company.logo_url ?? undefined,
         }}
       />
-    </ClientProviders>
+    </RootProviders>
   );
 }

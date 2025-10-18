@@ -1,12 +1,15 @@
-// src/components/ClientProviders.tsx
 'use client';
-import React from 'react';
-import { AuthProvider } from '@/context/AuthContext'; // use este caminho consistentemente
+import React, { useEffect, useState } from 'react';
+import { AuthProvider } from '@/context/AuthContext';
 
 export default function ClientProviders({ children, companyId }: { children: React.ReactNode; companyId?: string }) {
-  return (
-    <AuthProvider companyId={companyId}>
-      {children}
-    </AuthProvider>
-  );
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return null;
+
+  return <AuthProvider companyId={companyId}>{children}</AuthProvider>;
 }

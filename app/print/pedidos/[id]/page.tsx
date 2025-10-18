@@ -167,16 +167,6 @@ export default async function PrintOrderPage({ params, searchParams }: Props) {
           Obrigado pela preferência!
         </footer>
       </div>
-
-      {/* <script
-        dangerouslySetInnerHTML={{
-          __html: `
-            // botão de imprimir
-            document.getElementById('printBtn')?.addEventListener('click', () => window.print());
-            ${autoPrint ? `window.addEventListener('load', () => setTimeout(() => window.print(), 300));` : ''}
-          `,
-        }}
-      /> */}
     </div>
   );
 }

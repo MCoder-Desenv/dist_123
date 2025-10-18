@@ -74,11 +74,28 @@ export function AuthProvider({ children, companyId }: { children: React.ReactNod
 //   return ctx;
 // }
 
+// export function useAuth() {
+//   const ctx = useContext(AuthContext);
+//   if (!ctx) {
+//     console.error('useAuth called outside AuthProvider. Call stack:', new Error().stack);
+//     throw new Error('useAuth must be used within AuthProvider');
+//   }
+//   return ctx;
+// }
+
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) {
-    console.error('useAuth called outside AuthProvider. Call stack:', new Error().stack);
-    throw new Error('useAuth must be used within AuthProvider');
+    if (typeof window !== 'undefined') {
+      console.warn('⚠️ useAuth chamado fora de <AuthProvider>');
+    }
+    return {
+      user: null,
+      loading: true,
+      setUser: () => {},
+      login: () => {},
+      logout: () => {},
+    };
   }
   return ctx;
 }

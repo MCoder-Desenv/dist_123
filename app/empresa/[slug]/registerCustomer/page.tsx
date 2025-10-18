@@ -1,7 +1,7 @@
 // app/empresa/[slug]/registerCustomer/page.tsx
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import ClientProviders from '@/components/ClientProviders';
+import { RootProviders } from '@/components/RootProviders';
 import RegisterCustomer from '@/components/public/register-customer';
 import { prisma } from '@/lib/db';
 
@@ -44,7 +44,7 @@ export default async function RegisterCustomerPage({ params }: Props) {
   }
 
   return (
-    <ClientProviders companyId={company.id}>
+    <RootProviders companyId={company.id}>
       <RegisterCustomer
         slug={params.slug}
         company={{
@@ -55,6 +55,6 @@ export default async function RegisterCustomerPage({ params }: Props) {
           logo_url: company.logo_url ?? undefined,
         }}
       />
-    </ClientProviders>
+    </RootProviders>
   );
 }
