@@ -54,5 +54,5 @@ USER node
 
 EXPOSE 3015
 
-# CMD robusto usando variáveis de ambiente (evita parsing de flags)
-CMD ["sh", "-c", "npx prisma migrate deploy --schema=prisma/schema.prisma && next start"]
+# CMD usando caminho absoluto para o binário do Next.js
+CMD ["sh", "-c", "npx prisma migrate deploy --schema=prisma/schema.prisma && node node_modules/.bin/next start"]
