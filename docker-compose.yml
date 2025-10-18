@@ -33,7 +33,7 @@ services:
       - HOST=0.0.0.0
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.distribuidorasystem.rule=Host(`seu.dominio.com`)"
+      - "traefik.http.routers.distribuidorasystem.rule=Host(`distribuidora.eadescola.online`)"
       - "traefik.http.routers.distribuidorasystem.entrypoints=websecure"
       - "traefik.http.routers.distribuidorasystem.tls.certresolver=leresolver"
       - "traefik.http.services.distribuidorasystem.loadbalancer.server.port=3015"
