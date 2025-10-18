@@ -25,7 +25,8 @@ services:
     depends_on:
       - distribuidorasystem_database
     volumes:
-      - ./public/uploads:/home/node/app/public/uploads   # bind mount para uploads
+      - ./public/uploads:/home/node/app/public/uploads
+    command: sh -c "npx prisma migrate deploy --schema=prisma/schema.prisma && node node_modules/.bin/next start -p ${PORT} -H 0.0.0.0"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.distribuidorasystem.rule=Host(`distribuidora.eadescola.online`)"

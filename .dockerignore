@@ -1,0 +1,11 @@
+node_modules
+.next
+dist
+.vscode
+.git
+.gitignore
+docker-compose.override.yml
+.DS_Store
+.env
+.env.local
+.env.*.local
