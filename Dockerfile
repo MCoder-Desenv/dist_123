@@ -17,7 +17,7 @@ COPY package.json package-lock.json ./
 COPY prisma ./prisma
 
 # Instalar dependências (inclui dev deps para build e executa postinstall -> prisma generate)
-RUN npm ci
+RUN npm ci --include=dev
 
 # Copiar resto do código
 COPY . .
