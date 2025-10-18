@@ -37,7 +37,6 @@ services:
       - "traefik.http.services.distribuidorasystem.loadbalancer.server.port=3015"
     networks:
       - distribuidorasystem_network
-      - traefik
 
 volumes:
   distribuidorasystem_db_data:
@@ -45,5 +44,3 @@ volumes:
 networks:
   distribuidorasystem_network:
     driver: bridge
-  traefik:
-    external: true
