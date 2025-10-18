@@ -34,6 +34,12 @@ FROM node:22-slim AS runner
 WORKDIR /home/node/app
 ENV NODE_ENV=production
 ENV PORT=3015
+ENV HOST=0.0.0.0
+
+# Instalar OpenSSL no stage final também (para evitar warnings do Prisma)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 # Copiar node_modules e build do builder
 COPY --from=builder /home/node/app/node_modules ./node_modules
@@ -48,4 +54,5 @@ USER node
 
 EXPOSE 3015
 
-CMD ["node", "node_modules/.bin/next", "start", "-p", "3015", "-H", "0.0.0.0"]
+# CMD robusto usando variáveis de ambiente (evita parsing de flags)
+CMD ["sh", "-c", "npx prisma migrate deploy --schema=prisma/schema.prisma && next start"]
