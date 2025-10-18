@@ -2,7 +2,8 @@
 FROM node:22-slim AS builder
 
 WORKDIR /home/node/app
-ENV NODE_ENV=development
+ARG NODE_ENV=production
+ENV NODE_ENV=${NODE_ENV}
 
 # Instalar dependências do SO necessárias para o Prisma (OpenSSL)
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -18,6 +18,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        NODE_ENV: production
     container_name: distribuidorasystem_backend
     restart: always
     env_file:
