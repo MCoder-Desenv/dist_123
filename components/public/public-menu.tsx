@@ -1,4 +1,3 @@
-// src/components/public/public-menu.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
