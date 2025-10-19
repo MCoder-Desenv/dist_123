@@ -51,5 +51,5 @@ volumes:
   distribuidorasystem_db_data:
 
 networks:
-  distribuidorasystem_network:
-    driver: bridge
+  	distribuidorasystem_network:
+    external: true
