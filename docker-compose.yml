@@ -33,13 +33,20 @@ services:
       - HOST=0.0.0.0
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.distribuidorasystem.rule=Host(`distribuidora.eadescola.online`)"
-      - "traefik.http.routers.distribuidorasystem.entrypoints=websecure"
-      - "traefik.http.routers.distribuidorasystem.tls.certresolver=leresolver"
-      - "traefik.http.services.distribuidorasystem.loadbalancer.server.port=3015"
-    networks:
-      - distribuidorasystem_network
 
+      # Rota HTTP → redireciona para HTTPS
+      - "traefik.http.routers.distribuidorasystem-http.entrypoints=web"
+      - "traefik.http.routers.distribuidorasystem-http.rule=Host(`distribuidora.eadescola.online`)"
+      - "traefik.http.routers.distribuidorasystem-http.middlewares=redirect-to-https"
+
+      # Rota HTTPS
+      - "traefik.http.routers.distribuidorasystem.entrypoints=websecure"
+      - "traefik.http.routers.distribuidorasystem.rule=Host(`distribuidora.eadescola.online`)"
+      - "traefik.http.routers.distribuidorasystem.tls=true"
+      - "traefik.http.routers.distribuidorasystem.tls.certresolver=leresolver"
+
+      # Serviço apontando para a porta interna do app
+      - "traefik.http.services.distribuidorasystem.loadbalancer.server.port=3015"
 volumes:
   distribuidorasystem_db_data:
 
