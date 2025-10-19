@@ -2,17 +2,17 @@
   "name": "app",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "start:prod": "next start",
-    "prisma:fix": "npx prisma migrate deploy || npx prisma migrate resolve --applied 20251012182530_init",
-    "lint": "next lint",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate:dev": "prisma migrate dev",
-    "prisma:migrate:deploy": "prisma migrate deploy",
-    "seed": "tsx --require dotenv/config scripts/seed.ts",
-    "postinstall": "prisma generate"
+  "dev": "next dev",
+  "build": "next build",
+  "start": "next start",
+  "start:prod": "next start",
+  "prisma:fix": "node -e \"(async()=>{const {exec}=require('child_process');const run=(c)=>new Promise((res,rej)=>exec(c,(e,stdout,stderr)=>e?rej({stdout,stderr}):res({stdout,stderr})));let tries=0;const max=10;while(tries<max){tries++;try{const {stdout}=await run('npx prisma migrate deploy');console.log(stdout||'Migrations aplicadas.');process.exit(0);}catch(err){const out=(err.stderr||err.stdout||'');if(out.includes('P3009')){console.error('P3009: há migrações marcadas como failed.');console.error('Resolva manualmente com: npx prisma migrate resolve --applied <migration_id> (ou --rolled-back) e depois rode npx prisma migrate deploy');process.exit(1);}if(out.includes('P1001')||out.includes('P1000')||out.includes('ECONNREFUSED')){console.error(`Banco indisponível, tentativa ${tries}/${max}. Aguardando 3s...`);await new Promise(r=>setTimeout(r,3000));continue;}console.error(out||'Erro ao aplicar migrations');process.exit(1);}}console.error('Banco não ficou disponível a tempo.');process.exit(1);})().catch(e=>{console.error(e.stderr||e.stdout||e.message||e);process.exit(1);})\"",
+  "lint": "next lint",
+  "prisma:generate": "prisma generate",
+  "prisma:migrate:dev": "prisma migrate dev",
+  "prisma:migrate:deploy": "prisma migrate deploy",
+  "seed": "tsx --require dotenv/config scripts/seed.ts",
+  "postinstall": "prisma generate"
   },
   "prisma": {
     "seed": "tsx --require dotenv/config scripts/seed.ts"
