@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  distribuidorasystem_backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NODE_ENV: production
+    container_name: distribuidorasystem_backend
+    restart: always
+    env_file:
+      - .env.producao
+    depends_on:
+      - distribuidorasystem_database
+    volumes:
+      - ./public/uploads:/home/node/app/public/uploads
+    environment:
+      - PORT=3015
+      - HOST=0.0.0.0
+    labels:
+      - "traefik.enable=true"
+
+      # Rota HTTP → redireciona para HTTPS
+      - "traefik.http.routers.distribuidorasystem-http.entrypoints=web"
+      - "traefik.http.routers.distribuidorasystem-http.rule=Host(`distribuidora.eadescola.online`)"
+      - "traefik.http.routers.distribuidorasystem-http.middlewares=redirect-to-https"
+
+      # Rota HTTPS
+      - "traefik.http.routers.distribuidorasystem.entrypoints=websecure"
+      - "traefik.http.routers.distribuidorasystem.rule=Host(`distribuidora.eadescola.online`)"
+      - "traefik.http.routers.distribuidorasystem.tls=true"
+      - "traefik.http.routers.distribuidorasystem.tls.certresolver=leresolver"
+
+      # Serviço apontando para a porta interna do app
+      - "traefik.http.services.distribuidorasystem.loadbalancer.server.port=3015"
+
+networks:
+  distribuidorasystem_network:
+    external: true
+
