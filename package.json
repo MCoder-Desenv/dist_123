@@ -6,6 +6,7 @@
     "build": "next build",
     "start": "next start",
     "start:prod": "next start",
+    "prisma:fix": "npx prisma migrate deploy || npx prisma migrate resolve --applied 20251012182530_init",
     "lint": "next lint",
     "prisma:generate": "prisma generate",
     "prisma:migrate:dev": "prisma migrate dev",

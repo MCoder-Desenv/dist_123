@@ -28,6 +28,8 @@ services:
       - distribuidorasystem_database
     volumes:
       - ./public/uploads:/home/node/app/public/uploads
+    networks:
+      - distribuidorasystem_network
     environment:
       - PORT=3015
       - HOST=0.0.0.0
