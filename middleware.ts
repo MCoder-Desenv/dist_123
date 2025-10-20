@@ -8,7 +8,7 @@ export default withAuth(
     const token = req.nextauth.token;
 
     // Rotas públicas que não precisam de autenticação
-    const publicPaths = ['/login', '/signup', '/empresa', '/api/public-files', '/api/public'];
+    const publicPaths = ['/login', '/signup', '/empresa', '/api/public-files', '/api/public', '/uploads'];
     const isPublicPath = publicPaths.some(path => pathname.startsWith(path));
     
     if (isPublicPath) {
@@ -83,6 +83,6 @@ export const config = {
      * - favicon.ico (favicon file)
      * - public folder
      */
-    '/((?!api/auth|api/public|api/customers|_next/static|_next/image|favicon.ico|public/).*)'
+    '/((?!api/auth|api/public|api/customers|_next/static|_next/image|favicon.ico|public/|uploads/).*)'
   ]
 };
