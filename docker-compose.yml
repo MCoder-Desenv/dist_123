@@ -49,6 +49,28 @@ services:
 
       # Serviço apontando para a porta interna do app
       - "traefik.http.services.distribuidorasystem.loadbalancer.server.port=3015"
+
+  #Novo serviço para servir as imagens de uploads
+  distribuidorasystem_uploads:
+    image: nginx:alpine
+    container_name: distribuidorasystem_uploads
+    restart: always
+    volumes:
+      - ./public/uploads:/usr/share/nginx/html/uploads:ro
+    labels:
+      - "traefik.enable=true"
+
+      # HTTPS + prioridade maior que o backend
+      - "traefik.http.routers.distribuidorasystem-uploads.entrypoints=websecure"
+      - "traefik.http.routers.distribuidorasystem-uploads.rule=Host(`distribuidora.eadescola.online`) && PathPrefix(`/uploads/`)"
+      - "traefik.http.routers.distribuidorasystem-uploads.tls=true"
+      - "traefik.http.routers.distribuidorasystem-uploads.tls.certresolver=leresolver"
+      - "traefik.http.routers.distribuidorasystem-uploads.priority=20"
+      - "traefik.http.services.distribuidorasystem-uploads.loadbalancer.server.port=80"
+    networks:
+      - distribuidorasystem_network
+
+
 volumes:
   distribuidorasystem_db_data:
 

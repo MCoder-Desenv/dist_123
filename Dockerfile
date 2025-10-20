@@ -54,5 +54,8 @@ USER node
 
 EXPOSE 3015
 
+# Garantir permissões no diretório de uploads no runtime
+RUN mkdir -p /home/node/app/public/uploads && chown -R node:node /home/node/app/public/uploads
+
 # CMD usando caminho absoluto para o binário do Next.js
 CMD ["sh", "-c", "npx prisma migrate deploy --schema=prisma/schema.prisma && node node_modules/.bin/next start"]
