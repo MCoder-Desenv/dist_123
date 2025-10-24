@@ -13,6 +13,8 @@ services:
       - distribuidorasystem_db_data:/var/lib/postgresql/data
     networks:
       - distribuidorasystem_network
+    ports:
+      - "5445:5432"
 
   distribuidorasystem_backend:
     build:
