@@ -24,7 +24,12 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Chave (key) é obrigatória' }, { status: 400 });
     }
 
-    // Normalizar (remover /uploads/ ou leading slashes)
+    // Decodifica e normaliza (remover /uploads/ ou leading slashes)
+    try {
+      key = decodeURIComponent(key);
+    } catch {
+      // se decode falhar, segue com o valor original
+    }
     key = key.replace(/^\/uploads\//, '').replace(/^\/+/, '');
 
     // 4) Validações de segurança

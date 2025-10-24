@@ -1,4 +1,3 @@
-
 import { NextResponse } from 'next/server';
 import { getServerAuthSession, getCompanyFilter, getCompanyIdForCreate } from '@/lib/auth';
 import { prisma } from '@/lib/db';
@@ -23,7 +22,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
     }
 
-    const { name, email, phone, password } = await request.json();
+    const { name, email, phone, active } = await request.json();
 
     // Verificar se o cliente pertence à empresa do usuário
     const customer = await prisma.customer.findFirst({
@@ -42,12 +41,11 @@ export async function PUT(
       const companyFilter = getCompanyFilter(session);
       const companyId = companyFilter.company_id || customer.company_id;
       
-      const existingCustomer = await prisma.customer.findUnique({
+      const existingCustomer = await prisma.customer.findFirst({
         where: {
-          company_id_email: {
-            company_id: companyId,
-            email: email.toLowerCase(),
-          },
+          company_id: companyId,
+          email: email.toLowerCase(),
+          id: { not: params.id }, // Excluir o próprio cliente da busca
         },
       });
 
@@ -65,8 +63,9 @@ export async function PUT(
       phone,
     };
 
-    if (password) {
-      updateData.password = await bcrypt.hash(password, 10);
+    // ✅ Adicionar campo active se fornecido
+    if (typeof active === 'boolean') {
+      updateData.active = active;
     }
 
     const updatedCustomer = await prisma.customer.update({
@@ -76,7 +75,9 @@ export async function PUT(
         id: true,
         email: true,
         name: true,
+        cnpj_cpf: true,
         phone: true,
+        active: true,
         created_at: true,
       },
     });
@@ -91,57 +92,4 @@ export async function PUT(
   }
 }
 
-// DELETE - Excluir cliente
-export async function DELETE(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
-  try {
-    const session = await getServerAuthSession();
-
-    if (!session) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    }
-
-    // Verificar permissão
-    if (!hasPermission(session.user.role as UserRole, 'customers', 'delete')) {
-      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
-    }
-
-    // Verificar se o cliente pertence à empresa do usuário
-    const customer = await prisma.customer.findFirst({
-      where: {
-        id: params.id,
-        ...getCompanyFilter(session),
-      },
-    });
-
-    if (!customer) {
-      return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
-    }
-
-    // Verificar se o cliente tem pedidos
-    const orderCount = await prisma.order.count({
-      where: { customer_id: params.id },
-    });
-
-    if (orderCount > 0) {
-      return NextResponse.json(
-        { error: 'Não é possível excluir cliente com pedidos' },
-        { status: 400 }
-      );
-    }
-
-    await prisma.customer.delete({
-      where: { id: params.id },
-    });
-
-    return NextResponse.json({ message: 'Cliente excluído com sucesso' });
-  } catch (error) {
-    console.error('Erro ao excluir cliente:', error);
-    return NextResponse.json(
-      { error: 'Erro ao excluir cliente' },
-      { status: 500 }
-    );
-  }
-}
+// ✅ DELETE removido - não permitimos exclusão física

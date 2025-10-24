@@ -1,9 +1,9 @@
-// app/api/upload/variant/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import sharp from 'sharp'; // npm install sharp
 import { uploadFile } from '@/lib/storage';
 import { getServerAuthSession, hasPermission } from '@/lib/auth';
+import { sanitizeFilename } from '@/lib/files';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,15 +46,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Arquivo inválido. Envie uma imagem válida.' }, { status: 400 });
     }
 
+    // Nome original e extensão
     const originalName = (file as any).name || '';
-    const ext = path.extname(originalName) || `.${(file.type || 'image/jpeg').split('/')[1] || 'jpg'}`;
+    const extFromName = path.extname(originalName);
+    const ext = extFromName || `.${(file.type || 'image/jpeg').split('/')[1] || 'jpg'}`;
 
+    // sanitize base name (sem extensão)
+    const base = path.basename(originalName, extFromName) || '';
+    const safeBase = sanitizeFilename(base) || 'image';
+
+    // uuid (prefer crypto.randomUUID quando disponível)
     const uuid = (globalThis as any).crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    const fileName = `products/temp/${uuid}${ext}`;
+
+    // Monta chave temporária incluindo nome sanitizado
+    const fileName = `products/temp/${uuid}_${safeBase}${ext}`;
 
     await uploadFile(buffer, fileName);
 
-    const fileUrl = `/api/files/${fileName}`;
+    const fileUrl = `/api/files/${encodeURIComponent(fileName)}`;
 
     return NextResponse.json({
       success: true,

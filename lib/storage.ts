@@ -1,4 +1,4 @@
-// src/lib/storage.ts
+// /lib/storage.ts
 import path from 'path';
 import fs from 'fs/promises';
 import { existsSync, mkdirSync } from 'fs';
@@ -19,6 +19,22 @@ function getLocalConfig() {
   return { dir, baseUrl };
 }
 
+function normalizeKey(key: string) {
+  if (!key) return key;
+  try {
+    key = decodeURIComponent(key);
+  } catch {
+    // ignore
+  }
+  // Remove leading /uploads/ ou leading slashes
+  key = key.replace(/^\/uploads\//, '').replace(/^\/+/, '');
+  // Prevent directory traversal
+  if (key.includes('..')) {
+    throw new Error('Invalid key');
+  }
+  return key;
+}
+
 /**
  * Salva um buffer de arquivo no disco local.
  * @param buffer Conteúdo do arquivo
@@ -27,7 +43,7 @@ function getLocalConfig() {
  */
 export async function uploadFile(buffer: Buffer, fileName: string): Promise<string> {
   const { dir } = getLocalConfig();
-  const key = fileName;
+  const key = normalizeKey(fileName);
   const filePath = path.join(dir, key);
 
   // Garante que o diretório (ex: logos/abc123) exista
@@ -39,7 +55,8 @@ export async function uploadFile(buffer: Buffer, fileName: string): Promise<stri
 
 export async function deleteFile(key: string): Promise<void> {
   const { dir } = getLocalConfig();
-  const filePath = path.join(dir, key);
+  const normalized = normalizeKey(key);
+  const filePath = path.join(dir, normalized);
   try {
     await fs.unlink(filePath);
   } catch (e: any) {
@@ -52,21 +69,39 @@ export async function deleteFile(key: string): Promise<void> {
 
 export async function getDownloadUrl(key: string): Promise<string> {
   const { baseUrl } = getLocalConfig();
-  return `${baseUrl}/uploads/${encodeURIComponent(key)}`;
+  const normalized = normalizeKey(key);
+  // Encode each segment to preserve slashes
+  const encoded = normalized.split('/').map(encodeURIComponent).join('/');
+  return `${baseUrl.replace(/\/$/, '')}/uploads/${encoded}`;
 }
 
 export async function renameFile(oldKey: string, newKey: string): Promise<void> {
   const { dir } = getLocalConfig();
-  const oldPath = path.join(dir, oldKey);
-  const newPath = path.join(dir, newKey);
+  const oldNormalized = normalizeKey(oldKey);
+  const newNormalized = normalizeKey(newKey);
+
+  const oldPath = path.join(dir, oldNormalized);
+  const newPath = path.join(dir, newNormalized);
 
   await fs.mkdir(path.dirname(newPath), { recursive: true });
+
+  // If old file doesn't exist, throw a clear error
+  try {
+    await fs.access(oldPath);
+  } catch (e: any) {
+    if (e.code === 'ENOENT') {
+      throw new Error(`Source file not found: ${oldNormalized}`);
+    }
+    throw e;
+  }
+
   await fs.rename(oldPath, newPath);
 }
 
 export async function getFileContent(key: string): Promise<Buffer | null> {
   const { dir } = getLocalConfig();
-  const filePath = path.join(dir, key);
+  const normalized = normalizeKey(key);
+  const filePath = path.join(dir, normalized);
   try {
     return await fs.readFile(filePath);
   } catch (e: any) {

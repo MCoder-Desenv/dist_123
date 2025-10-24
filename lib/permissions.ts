@@ -247,18 +247,18 @@ export function getAccessibleMenuItems(userRole: UserRole) {
       icon: 'ShoppingCart',
       roles: ['MASTER_DIST', 'ATENDENTE', 'LEITURA']
     },
-    // {
-    //   label: 'Financeiro',
-    //   href: '/admin/financeiro',
-    //   icon: 'DollarSign',
-    //   roles: ['MASTER_DIST', 'FINANCEIRO', 'LEITURA']
-    // },
     {
-      label: 'Logs de Auditoria',
-      href: '/admin/auditoria',
-      icon: 'FileText',
-      roles: ['MASTER_DIST']
+      label: 'Financeiro',
+      href: '/admin/financeiro',
+      icon: 'DollarSign',
+      roles: ['MASTER_DIST', 'FINANCEIRO', 'LEITURA']
     },
+    // {
+    //   label: 'Logs de Auditoria',
+    //   href: '/admin/auditoria',
+    //   icon: 'FileText',
+    //   roles: ['MASTER_DIST']
+    // },
     {
       label: 'Relatórios',
       href: '/admin/relatorios',

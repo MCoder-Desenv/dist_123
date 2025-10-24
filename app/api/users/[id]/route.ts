@@ -68,6 +68,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 }
 
 // PUT /api/users/[id] - Atualizar usuário
+// PUT /api/users/[id] - Atualizar usuário
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await getServerAuthSession();
@@ -137,11 +138,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       role: validatedData.role
     };
 
-    // Atualizar senha se fornecida
-    if (validatedData.password) {
-      updateData.password = await bcrypt.hash(validatedData.password, 12);
-    }
-
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: updateData,
@@ -153,6 +149,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         phone: true,
         role: true,
         active: true,
+        company_id: true, // ✅ Adicionar para consistência
+        created_at: true,
         updated_at: true
       }
     });
@@ -169,15 +167,15 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
           email: existingUser.email,
           role: existingUser.role,
           first_name: existingUser.first_name,
-        last_name: existingUser.last_name
-      },
-      new_values: {
-        email: validatedData.email,
-        role: validatedData.role,
-        first_name: validatedData.firstName,
-        last_name: validatedData.lastName
-      }
-    });
+          last_name: existingUser.last_name
+        },
+        new_values: {
+          email: validatedData.email,
+          role: validatedData.role,
+          first_name: validatedData.firstName,
+          last_name: validatedData.lastName
+        }
+      });
     }
 
     return NextResponse.json({

@@ -1,4 +1,3 @@
-
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession, hasPermission, canAccessCompany, getCompanyFilter, getCompanyIdForCreate } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
@@ -11,10 +10,10 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await getServerAuthSession();
-    
+  
     if (!session?.user) {
       return NextResponse.json(
-        { success: false, error: 'Não autorizado' },
+        { success: false, message: 'Não autorizado' },
         { status: 401 }
       );
     }
@@ -22,7 +21,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     // Verificar permissão
     if (!hasPermission(session.user.role, ['ADMINISTRADOR', 'MASTER_DIST', 'FINANCEIRO'])) {
       return NextResponse.json(
-        { success: false, error: 'Sem permissão' },
+        { success: false, message: 'Sem permissão' },
         { status: 403 }
       );
     }
@@ -45,7 +44,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     if (!entry) {
       return NextResponse.json(
-        { success: false, error: 'Entrada financeira não encontrada' },
+        { success: false, message: 'Entrada financeira não encontrada' },
         { status: 404 }
       );
     }
@@ -53,7 +52,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     // Verificar se pode acessar a entrada (mesma empresa)
     if (!canAccessCompany(session.user.company_id, entry.company_id)) {
       return NextResponse.json(
-        { success: false, error: 'Sem permissão para acessar esta entrada' },
+        { success: false, message: 'Sem permissão para acessar esta entrada' },
         { status: 403 }
       );
     }
@@ -66,7 +65,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   } catch (error) {
     console.error('Financial entry GET error:', error);
     return NextResponse.json(
-      { success: false, error: 'Erro interno do servidor' },
+      { success: false, message: 'Erro interno do servidor' },
       { status: 500 }
     );
   }
@@ -76,10 +75,10 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await getServerAuthSession();
-    
+  
     if (!session?.user) {
       return NextResponse.json(
-        { success: false, error: 'Não autorizado' },
+        { success: false, message: 'Não autorizado' },
         { status: 401 }
       );
     }
@@ -87,7 +86,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     // Verificar permissão
     if (!hasPermission(session.user.role, ['ADMINISTRADOR', 'MASTER_DIST', 'FINANCEIRO'])) {
       return NextResponse.json(
-        { success: false, error: 'Sem permissão' },
+        { success: false, message: 'Sem permissão' },
         { status: 403 }
       );
     }
@@ -100,7 +99,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
     if (!existingEntry) {
       return NextResponse.json(
-        { success: false, error: 'Entrada financeira não encontrada' },
+        { success: false, message: 'Entrada financeira não encontrada' },
         { status: 404 }
       );
     }
@@ -108,7 +107,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     // Verificar se pode acessar a entrada (mesma empresa)
     if (!canAccessCompany(session.user.company_id, existingEntry.company_id)) {
       return NextResponse.json(
-        { success: false, error: 'Sem permissão para acessar esta entrada' },
+        { success: false, message: 'Sem permissão para acessar esta entrada' },
         { status: 403 }
       );
     }
@@ -140,16 +139,16 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
   } catch (error) {
     console.error('Financial entry PUT error:', error);
-    
+  
     if (error instanceof Error && 'code' in error) {
       return NextResponse.json(
-        { success: false, error: 'Dados inválidos' },
+        { success: false, message: 'Dados inválidos' },
         { status: 400 }
       );
     }
 
     return NextResponse.json(
-      { success: false, error: 'Erro interno do servidor' },
+      { success: false, message: 'Erro interno do servidor' },
       { status: 500 }
     );
   }
@@ -159,18 +158,18 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await getServerAuthSession();
-    
+  
     if (!session?.user) {
       return NextResponse.json(
-        { success: false, error: 'Não autorizado' },
+        { success: false, message: 'Não autorizado' },
         { status: 401 }
       );
     }
 
     // Verificar permissão
-    if (!hasPermission(session.user.role, ['ADMINISTRADOR', 'FINANCEIRO'])) {
+    if (!hasPermission(session.user.role, ['ADMINISTRADOR', 'MASTER_DIST', 'FINANCEIRO'])) {
       return NextResponse.json(
-        { success: false, error: 'Sem permissão' },
+        { success: false, message: 'Sem permissão' },
         { status: 403 }
       );
     }
@@ -183,7 +182,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
 
     if (!existingEntry) {
       return NextResponse.json(
-        { success: false, error: 'Entrada financeira não encontrada' },
+        { success: false, message: 'Entrada financeira não encontrada' },
         { status: 404 }
       );
     }
@@ -191,7 +190,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     // Verificar se pode acessar a entrada (mesma empresa)
     if (!canAccessCompany(session.user.company_id, existingEntry.company_id)) {
       return NextResponse.json(
-        { success: false, error: 'Sem permissão para acessar esta entrada' },
+        { success: false, message: 'Sem permissão para acessar esta entrada' },
         { status: 403 }
       );
     }
@@ -199,7 +198,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     // Não permitir deletar entradas vinculadas a pedidos
     if (existingEntry.order_id) {
       return NextResponse.json(
-        { success: false, error: 'Não é possível deletar entradas vinculadas a pedidos' },
+        { success: false, message: 'Não é possível deletar entradas vinculadas a pedidos' },
         { status: 400 }
       );
     }
@@ -227,7 +226,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
   } catch (error) {
     console.error('Financial entry DELETE error:', error);
     return NextResponse.json(
-      { success: false, error: 'Erro interno do servidor' },
+      { success: false, message: 'Erro interno do servidor' },
       { status: 500 }
     );
   }

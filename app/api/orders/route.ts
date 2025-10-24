@@ -46,7 +46,8 @@
         where.OR = [
           { customer_name: { contains: search, mode: 'insensitive' } },
           { customer_email: { contains: search, mode: 'insensitive' } },
-          { customer_phone: { contains: search } }
+          { customer_phone: { contains: search } },
+          { customer_cnpj_cpf: {contains: search} , mode: 'insensitive'}
         ];
       }
 
@@ -102,6 +103,7 @@
           order_number: order.id.substring(0, 8).toUpperCase(),
           customer_name: order.customer_name,
           customer_email: order.customer_email,
+          customer_cnpj_cpf: order.customer_cnpj_cpf,
           customer_phone: order.customer_phone,
           delivery_type: order.delivery_type,
           payment_method: order.payment_method,
@@ -169,7 +171,6 @@
       }
 
       const body = await request.json();
-      console.log('POST /api/orders chamado com body:', body);
 
       let companyId: string;
       if (isPublic) {
@@ -251,15 +252,15 @@
 
       const deliveryFee = 0;
       const totalAmount = subtotal + deliveryFee;
-      console.log('Criando pedido...');
       const order = await prisma.order.create({
         data: {
           company_id: companyId,
           user_id: session?.user.id || null,
           customer_id: body.customer_id || null,
           customer_name: validatedData.customer_name,
-          customer_email: validatedData.customer_email,
-          customer_phone: validatedData.customer_phone,
+          customer_email: validatedData.customer_email || null,
+          customer_phone: validatedData.customer_phone  || null,
+          customer_cnpj_cpf: validatedData.customer_cnpj_cpf,
           delivery_address: validatedData.delivery_address,
           delivery_type: validatedData.delivery_type,
           payment_method: validatedData.payment_method,
@@ -285,7 +286,6 @@
           }
         }
       });
-      console.log('Pedido criado com sucesso:', order.id);
 
       await prisma.financialEntry.create({
         data: {

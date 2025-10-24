@@ -1,4 +1,3 @@
-
 import { NextResponse } from 'next/server';
 import { getServerAuthSession, getCompanyFilter, getCompanyIdForCreate } from '@/lib/auth';
 import { prisma } from '@/lib/db';
@@ -22,13 +21,17 @@ export async function GET() {
 
     const customers = await prisma.customer.findMany({
       where: {
-      ...getCompanyFilter(session),
+        ...getCompanyFilter(session),
+        // ✅ Opcional: mostrar apenas ativos ou todos
+        // active: true, // Descomente para mostrar apenas ativos
       },
       select: {
         id: true,
         email: true,
         name: true,
+        cnpj_cpf: true,
         phone: true,
+        active: true, // ✅ Incluir campo active
         created_at: true,
         _count: {
           select: {
@@ -65,7 +68,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
     }
 
-    const { name, email, phone, password } = await request.json();
+    const { name, email, cnpj_cpf, phone, password } = await request.json();
 
     if (!name || !email || !password) {
       return NextResponse.json(
@@ -74,15 +77,20 @@ export async function POST(request: Request) {
       );
     }
 
+    if (password.length < 6) {
+      return NextResponse.json(
+        { error: 'A senha deve ter no mínimo 6 caracteres' },
+        { status: 400 }
+      );
+    }
+
     const companyId = getCompanyIdForCreate(session);
     
     // Verificar se já existe cliente com este email na empresa
-    const existingCustomer = await prisma.customer.findUnique({
+    const existingCustomer = await prisma.customer.findFirst({
       where: {
-        company_id_email: {
-          company_id: companyId,
-          email: email.toLowerCase(),
-        },
+        company_id: companyId,
+        email: email.toLowerCase(),
       },
     });
 
@@ -93,7 +101,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     const customer = await prisma.customer.create({
       data: {
@@ -101,13 +109,17 @@ export async function POST(request: Request) {
         name,
         email: email.toLowerCase(),
         phone,
+        cnpj_cpf,
         password: hashedPassword,
+        active: true, // ✅ Cliente criado como ativo por padrão
       },
       select: {
         id: true,
         email: true,
         name: true,
         phone: true,
+        cnpj_cpf: true,
+        active: true, // ✅ Incluir active na resposta
         created_at: true,
       },
     });

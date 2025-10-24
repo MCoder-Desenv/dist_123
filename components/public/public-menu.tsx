@@ -8,7 +8,7 @@ import { ShoppingCart, Search, Building2 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { QuantityModal } from './quantity-modal';
-import { useAuth } from '@/context/AuthContext'; // ✅ Importa o hook
+import { useAuth } from '@/context/AuthContext';
 
 interface Company {
   id: string;
@@ -32,9 +32,13 @@ interface Product {
   id: string;
   name: string;
   description?: string;
+  unit_type?: string;
+  volume?: string;
   base_price: number | string;
   image_url?: string;
   variants?: Variant[];
+  // quantidade no nível do produto (opcional)
+  stock_quantity?: number;
 }
 
 interface Variant {
@@ -44,11 +48,8 @@ interface Variant {
   unit_type?: string;
   price_modifier: number | string;
   image_url?: string;
-}
-
-interface SelectedVariant {
-  product: Product;
-  variant: Variant;
+  // quantidade da variação
+  stock_quantity?: number;
 }
 
 // Normalize keys e retorna a URL correta para usar em <img src=...>
@@ -79,9 +80,12 @@ export function PublicMenu({ slug, company }: { slug: string; company: Company }
   const [cartCount, setCartCount] = useState(0);
   const [cartTotal, setCartTotal] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
-  const [selectedVariant, setSelectedVariant] = useState<SelectedVariant | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
-  // ✅ Usa o AuthContext para saber se o usuário está logado
+  // Agora guardamos múltiplas mensagens para o alerta de estoque
+  const [stockAlertOpen, setStockAlertOpen] = useState(false);
+  const [stockAlertMessages, setStockAlertMessages] = useState<string[]>([]);
+
   const { user, loading: authLoading } = useAuth();
   const isLogged = !!user;
   const checkingAuth = authLoading;
@@ -89,6 +93,7 @@ export function PublicMenu({ slug, company }: { slug: string; company: Company }
   useEffect(() => {
     fetchMenu();
     loadCart();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
   const fetchMenu = async () => {
@@ -97,12 +102,49 @@ export function PublicMenu({ slug, company }: { slug: string; company: Company }
       if (res.ok) {
         const response = await res.json();
         if (response.success && response.data) {
-          setCategories(response.data.categories || []);
+          const rawCategories: Category[] = response.data.categories || [];
+
+          // Filtrar produtos/variantes com estoque <= 0
+          const filtered = rawCategories
+            .map((cat) => {
+              const filteredProducts = (cat.products || [])
+                .map((p) => {
+                  const variants = (p.variants || []).filter(
+                    (v) => Number(v.stock_quantity ?? 0) > 0
+                  );
+
+                  const productHasStock = Number(p.stock_quantity ?? 0) > 0;
+                  // Retorna somente produtos que têm estoque no nível do produto
+                  // ou que possuam pelo menos uma variação disponível
+                  if (!productHasStock && variants.length === 0) {
+                    return null;
+                  }
+
+                  return {
+                    ...p,
+                    variants,
+                  } as Product;
+                })
+                .filter(Boolean) as Product[];
+
+              return {
+                ...cat,
+                products: filteredProducts,
+              } as Category;
+            })
+            .filter((c) => (c.products || []).length > 0);
+
+          setCategories(filtered);
+        } else {
+          setCategories([]);
         }
+      } else {
+        setCategories([]);
       }
     } catch (error) {
       console.error('Error fetching menu:', error);
       toast.error('Erro ao carregar cardápio');
+      setCategories([]);
     } finally {
       setLoading(false);
     }
@@ -121,51 +163,191 @@ export function PublicMenu({ slug, company }: { slug: string; company: Company }
     }
   };
 
-  const openQuantityModal = (product: Product, variant: Variant) => {
-    setSelectedVariant({ product, variant });
+  const openProductModal = (product: Product) => {
+    // segurança: não abrir modal se produto não tiver estoque nem variações
+    const productHasStock = Number(product.stock_quantity ?? 0) > 0;
+    const hasAvailableVariants = (product.variants || []).some((v) => Number(v.stock_quantity ?? 0) > 0);
+
+    if (!productHasStock && !hasAvailableVariants) {
+      // não deveria acontecer porque já filtramos, mas tratamos por segurança
+      setStockAlertMessages([`Este PRODUTO '${product.name}' não está disponível no momento.`]);
+      setStockAlertOpen(true);
+      return;
+    }
+
+    setSelectedProduct(product);
     setModalOpen(true);
   };
 
-  const addToCart = (product: Product, variant: Variant, quantity: number) => {
-    try {
-      const cart = JSON.parse(localStorage.getItem(`cart_${company.id}`) || '[]');
-      const basePrice = typeof product.base_price === 'string' ? parseFloat(product.base_price) : product.base_price;
-      const modifierPrice = typeof variant.price_modifier === 'string' ? parseFloat(variant.price_modifier) : variant.price_modifier;
-      const price = basePrice + modifierPrice;
-      
-      const existingIndex = cart.findIndex(
-        (item: any) => item.product_id === product.id && item.variant_id === variant.id
-      );
+  // Helper: display name combinando produto + variação (se existir)
+  const displayName = (product: Product, variant: Variant | null) => {
+    if (!variant) return product.name;
+    return `${product.name} - ${variant.name}`;
+  };
 
-      if (existingIndex >= 0) {
-        cart[existingIndex].quantity += quantity;
-      } else {
-        cart.push({
-          product_id: product.id,
-          product_name: product.name,
-          variant_id: variant.id,
-          variant_name: variant.name,
-          unit_price: price,
-          quantity: quantity,
-        });
+  // items: array de { product, variant|null, quantity }
+  const addToCart = (items: Array<{ product: Product; variant: Variant | null; quantity: number }>) => {
+    try {
+      const cart: any[] = JSON.parse(localStorage.getItem(`cart_${company.id}`) || '[]');
+
+      // Agregar por chave productId::variantId para somar múltiplas adições na mesma chamada
+      type AggEntry = {
+        product: Product;
+        variant: Variant | null;
+        availableStock: number;
+        existingQty: number; // já no carrinho
+        requestedQty: number; // somatória nesta chamada
+      };
+
+      const aggMap = new Map<string, AggEntry>();
+
+      // Preenche existingQty a partir do cart
+      const getExistingFromCart = (productId: string, variantId: string | null) => {
+        const found = cart.find(
+          (c: any) =>
+            c.product_id === productId &&
+            ((variantId && c.variant_id === variantId) || (!variantId && !c.variant_id))
+        );
+        return found ? Number(found.quantity || 0) : 0;
+      };
+
+      // Agregar requested quantities
+      for (const it of items) {
+        const { product, variant, quantity } = it;
+        if (!product || !quantity || quantity <= 0) continue;
+
+        const key = `${product.id}::${variant?.id ?? 'null'}`;
+        const existingInCart = getExistingFromCart(product.id, variant?.id ?? null);
+        const availableStock = variant ? Number(variant.stock_quantity ?? 0) : Number(product.stock_quantity ?? 0);
+
+        if (!aggMap.has(key)) {
+          aggMap.set(key, {
+            product,
+            variant,
+            availableStock,
+            existingQty: existingInCart,
+            requestedQty: quantity,
+          });
+        } else {
+          const e = aggMap.get(key)!;
+          e.requestedQty += quantity;
+        }
+      }
+
+      // Verifica violações e coleta mensagens
+      const violations: string[] = [];
+      for (const [, entry] of aggMap.entries()) {
+        const { product, variant, availableStock, existingQty, requestedQty } = entry;
+        const totalWanted = existingQty + requestedQty;
+        if (availableStock <= 0) {
+          violations.push(`Só tem 0 deste PRODUTO: ${displayName(product, variant)}.`);
+        } else if (totalWanted > availableStock) {
+          violations.push(`Só tem ${availableStock} deste PRODUTO: ${displayName(product, variant)}.`);
+        }
+      }
+
+      if (violations.length > 0) {
+        setStockAlertMessages(violations);
+        setStockAlertOpen(true);
+        return;
+      }
+
+      // Se passou nas validações, adiciona ao carrinho
+      for (const { product, variant, quantity } of items) {
+        if (!product || !quantity || quantity <= 0) continue;
+
+        const basePrice = typeof product.base_price === 'string' ? parseFloat(product.base_price) : product.base_price;
+
+        if (variant) {
+          // Produto com variante
+          const modifierPrice = typeof variant.price_modifier === 'string' ? parseFloat(variant.price_modifier) : variant.price_modifier;
+          const price = (isNaN(Number(basePrice)) ? 0 : Number(basePrice)) + (isNaN(Number(modifierPrice)) ? 0 : Number(modifierPrice));
+
+          const existingIndex = cart.findIndex(
+            (item: any) => item.product_id === product.id && item.variant_id === variant.id
+          );
+
+          if (existingIndex >= 0) {
+            cart[existingIndex].quantity += quantity;
+          } else {
+            cart.push({
+              product_id: product.id,
+              product_name: product.name,
+              variant_id: variant.id,
+              variant_name: variant.name,
+              unit_price: price,
+              quantity: quantity,
+            });
+          }
+        } else {
+          // Produto sem variante
+          const base = isNaN(Number(basePrice)) ? 0 : Number(basePrice);
+          const existingIndex = cart.findIndex(
+            (item: any) => item.product_id === product.id && !item.variant_id
+          );
+
+          if (existingIndex >= 0) {
+            cart[existingIndex].quantity += quantity;
+          } else {
+            cart.push({
+              product_id: product.id,
+              product_name: product.name,
+              variant_id: null,
+              variant_name: null,
+              unit_price: base,
+              quantity: quantity,
+            });
+          }
+        }
       }
 
       localStorage.setItem(`cart_${company.id}`, JSON.stringify(cart));
       loadCart();
-      toast.success(`${quantity}x ${product.name} adicionado ao carrinho!`);
+
+      const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
+      toast.success(`${totalItems} ${totalItems === 1 ? 'item adicionado' : 'itens adicionados'} ao carrinho!`);
     } catch (error) {
       console.error('Error adding to cart:', error);
       toast.error('Erro ao adicionar ao carrinho');
     }
   };
 
-  const filteredCategories = categories.map(cat => ({
-    ...cat,
-    products: cat.products?.filter(p =>
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.description?.toLowerCase().includes(searchTerm.toLowerCase())
-    ) || [],
-  })).filter(cat => cat.products.length > 0);
+  // Função melhorada de filtro que busca em categorias, produtos e variantes (aplica sobre o estado já filtrado)
+  const filteredCategories = categories
+    .map((cat) => {
+      const searchLower = searchTerm.trim().toLowerCase();
+
+      // Se não há termo, retorna a categoria inteira (já filtrada por estoque)
+      if (!searchLower) return cat;
+
+      const categoryMatches =
+        cat.name.toLowerCase().includes(searchLower) ||
+        (cat.description || '').toLowerCase().includes(searchLower);
+
+      const filteredProducts = (cat.products || []).filter((p) => {
+        const productMatches =
+          p.name.toLowerCase().includes(searchLower) ||
+          (p.description || '').toLowerCase().includes(searchLower) ||
+          (p.unit_type || '').toLowerCase().includes(searchLower) ||
+          (p.volume || '').toLowerCase().includes(searchLower);
+
+        const variantMatches = (p.variants || []).some((v) => {
+          return (
+            v.name.toLowerCase().includes(searchLower) ||
+            (v.volume || '').toLowerCase().includes(searchLower) ||
+            (v.unit_type || '').toLowerCase().includes(searchLower)
+          );
+        });
+
+        return categoryMatches || productMatches || variantMatches;
+      });
+
+      return {
+        ...cat,
+        products: filteredProducts,
+      };
+    })
+    .filter((cat) => (cat.products || []).length > 0);
 
   if (loading) {
     return (
@@ -205,7 +387,6 @@ export function PublicMenu({ slug, company }: { slug: string; company: Company }
                 </div>
               </div>
 
-              {/* Área de ações - empilhado no mobile, inline em md+ */}
               <div className="flex flex-col items-center space-y-2 w-full max-w-xs md:flex-row md:space-y-0 md:space-x-2 md:w-auto">
                 {checkingAuth ? (
                   <Button className="w-full md:w-auto opacity-60">Carregando...</Button>
@@ -223,7 +404,6 @@ export function PublicMenu({ slug, company }: { slug: string; company: Company }
                   </>
                 )}
 
-                {/* Carrinho sempre visível */}
                 <Link href={`/empresa/${slug}/carrinho`} className="w-full">
                   <Button className="w-full md:w-auto relative">
                     <ShoppingCart className="mr-2 h-4 w-4" />
@@ -248,7 +428,7 @@ export function PublicMenu({ slug, company }: { slug: string; company: Company }
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <Input
               type="search"
-              placeholder="Buscar produtos..."
+              placeholder="Buscar categorias e produtos..."
               className="pl-10"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -285,10 +465,39 @@ export function PublicMenu({ slug, company }: { slug: string; company: Company }
                 )}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {category.products.map((product) => {
-                    const basePrice = typeof product.base_price === 'string' ? parseFloat(product.base_price) : product.base_price;
-                    
+                    // base price (number)
+                    let basePriceNum = typeof product.base_price === 'string' ? parseFloat(product.base_price) : Number(product.base_price ?? 0);
+                    if (isNaN(basePriceNum)) basePriceNum = 0;
+
+                    const hasVariants = product.variants && product.variants.length > 0;
+
+                    // Calcula menor preço entre variações (basePrice + modifier)
+                    let minVariantPrice = Infinity;
+                    if (product.variants && product.variants.length > 0) {
+                      for (const v of product.variants) {
+                        const modifier = typeof v.price_modifier === 'string' ? parseFloat(v.price_modifier) : Number(v.price_modifier ?? 0);
+                        const modNum = isNaN(modifier) ? 0 : modifier;
+                        const variantPrice = basePriceNum + modNum;
+                        if (!isNaN(variantPrice) && variantPrice < minVariantPrice) {
+                          minVariantPrice = variantPrice;
+                        }
+                      }
+                    }
+
+                    // Decide qual preço exibir:
+                    // - Se tem variantes e basePrice é zero/ausente -> usa minVariantPrice
+                    // - Caso contrário, usa basePriceNum
+                    let displayPrice = basePriceNum;
+                    if (hasVariants && (!basePriceNum || basePriceNum === 0)) {
+                      displayPrice = minVariantPrice === Infinity ? 0 : minVariantPrice;
+                    }
+
                     return (
-                      <Card key={product.id} className="overflow-hidden">
+                      <Card 
+                        key={product.id} 
+                        className="overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+                        onClick={() => openProductModal(product)}
+                      >
                         <CardContent className="p-0">
                           {product.image_url && (
                             <div className="relative aspect-video bg-gray-200">
@@ -302,74 +511,25 @@ export function PublicMenu({ slug, company }: { slug: string; company: Company }
                             </div>
                           )}
                           <div className="p-4">
-                            <h3 className="font-semibold text-lg text-gray-900">{product.name}</h3>
+                            <h3 className="font-semibold text-lg text-gray-900">
+                              {product.name}
+                              {product.unit_type && (
+                                <span className="font-semibold text-lg text-gray-900"> - {product.unit_type}</span>
+                              )}
+                            </h3>
                             {product.description && (
-                              <p className="text-sm text-gray-600 mt-1">{product.description}</p>
+                              <p className="text-sm text-gray-600 mt-1 line-clamp-2">{product.description}</p>
                             )}
-                            <div className="mt-3">
+                            <div className="mt-3 flex items-center justify-between">
                               <p className="text-lg font-bold text-blue-600">
-                                R$ {basePrice.toFixed(2)}
+                                {hasVariants ? 'A partir de ' : ''}R$ {Number(displayPrice || 0).toFixed(2)}
                               </p>
+                              {hasVariants && (
+                                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                                  {product?.variants?.length} {product?.variants?.length === 1 ? 'opção' : 'opções'}
+                                </span>
+                              )}
                             </div>
-                            
-                            {/* Variações */}
-                            {product.variants && product.variants.length > 0 ? (
-                              <div className="mt-4 space-y-2">
-                                {product.variants.map((variant) => {
-                                  const modifierPrice = typeof variant.price_modifier === 'string' ? parseFloat(variant.price_modifier) : variant.price_modifier;
-                                  const totalPrice = basePrice + modifierPrice;
-                                  
-                                  return (
-                                    <Button
-                                      key={variant.id}
-                                      variant="outline"
-                                      size="sm"
-                                      className="w-full justify-between hover:bg-blue-50 hover:border-blue-300"
-                                      onClick={() => openQuantityModal(product, variant)}
-                                    >
-                                      <div className="flex items-center justify-between w-full">
-                                        <div className="flex items-center">
-                                          {/* {variant.image_url ? (
-                                            <img
-                                              src={getFileUrl(variant.image_url) || ''}
-                                              alt={variant.name}
-                                              className="w-8 h-8 object-cover rounded mr-3"
-                                              onError={() => {}}
-                                              onLoad={() => {}}
-                                            />
-                                          ) : null} */}
-                                          <div className="text-left">
-                                            <span className="font-medium">{variant.name}</span>
-                                            {variant.volume && variant.unit_type && (
-                                              <span className="text-xs text-gray-500 ml-2">
-                                                ({variant.volume} - {variant.unit_type})
-                                              </span>
-                                            )}
-                                          </div>
-                                        </div>
-                                        <span className="font-semibold text-blue-600">R$ {totalPrice.toFixed(2)}</span>
-                                      </div>
-                                    </Button>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <Button
-                                className="w-full mt-4"
-                                onClick={() => {
-                                  // Se não tem variações, criar uma variação padrão
-                                  const defaultVariant: Variant = {
-                                    id: 'default',
-                                    name: 'Padrão',
-                                    price_modifier: 0,
-                                  };
-                                  openQuantityModal(product, defaultVariant);
-                                }}
-                              >
-                                <ShoppingCart className="mr-2 h-4 w-4" />
-                                Adicionar
-                              </Button>
-                            )}
                           </div>
                         </CardContent>
                       </Card>
@@ -382,23 +542,34 @@ export function PublicMenu({ slug, company }: { slug: string; company: Company }
         </div>
       </div>
 
-      {/* Modal de Quantidade */}
-      {selectedVariant && (
+      {/* Modal de Produto (QuantityModal externo) */}
+      {selectedProduct && (
         <QuantityModal
           open={modalOpen}
           onClose={() => {
             setModalOpen(false);
-            setSelectedVariant(null);
+            setSelectedProduct(null);
           }}
-          product={selectedVariant.product}
-          variant={selectedVariant.variant}
-          basePrice={
-            typeof selectedVariant.product.base_price === 'string'
-              ? parseFloat(selectedVariant.product.base_price)
-              : selectedVariant.product.base_price
-          }
-          onAddToCart={(quantity) => addToCart(selectedVariant.product, selectedVariant.variant, quantity)}
+          product={selectedProduct}
+          onAddToCart={addToCart}
         />
+      )}
+
+      {/* Modal simples para alertas de estoque (usa a mensagem com "PRODUTO") */}
+      {stockAlertOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-lg max-w-lg w-full p-6 mx-4">
+            <h3 className="text-lg font-semibold mb-2">Quantidade indisponível</h3>
+            <div className="text-sm text-gray-700 mb-4 space-y-2">
+              {stockAlertMessages.map((m, i) => (
+                <p key={i}>{m}</p>
+              ))}
+            </div>
+            <div className="flex justify-end">
+              <Button onClick={() => setStockAlertOpen(false)}>OK</Button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

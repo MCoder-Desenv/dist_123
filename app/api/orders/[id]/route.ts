@@ -17,6 +17,7 @@ function mapOrderToFrontend(order: any) {
     customer_name: order.customer_name,
     customer_email: order.customer_email,
     customer_phone: order.customer_phone,
+    customer_cnpj_cpf: order.customer_cnpj_cpf,
     delivery_type: order.delivery_type,
     payment_method: order.payment_method,
     status: order.status,
@@ -109,18 +110,9 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 }
 
 // PUT /api/orders/[id] - Atualizar pedido (status/notes)
-// PUT /api/orders/[id] - Atualizar pedido (status/notes)
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await getServerAuthSession();
-
-    // [LOG 1] Sessão
-    console.log('[PUT /api/orders/:id] Session', {
-      isAuth: !!session?.user,
-      userId: session?.user?.id,
-      userRole: session?.user?.role,
-      userCompanyId: session?.user?.company_id,
-    });
 
     if (!session?.user) {
       return NextResponse.json(
@@ -131,9 +123,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
     // Permissões
     const hasPerm = hasPermission(session.user.role, ['ADMINISTRADOR', 'MASTER_DIST', 'ATENDENTE']);
-
-    // [LOG 2] Permissão de role
-    console.log('[PUT /api/orders/:id] hasPermission', { hasPerm, role: session.user.role });
 
     if (!hasPerm) {
       console.warn('[PUT /api/orders/:id] Bloqueado por role');
@@ -155,14 +144,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       },
     });
 
-    // [LOG 3] Pedido existente
-    console.log('[PUT /api/orders/:id] Existing order', {
-      found: !!existingOrder,
-      orderId,
-      orderCompanyId: existingOrder?.company_id,
-      currentStatus: existingOrder?.status,
-    });
-
     if (!existingOrder) {
       return NextResponse.json(
         { success: false, error: 'Pedido não encontrado' },
@@ -171,13 +152,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     const canAccess = canAccessCompany(session.user.company_id, existingOrder.company_id);
-
-    // [LOG 4] Acesso por empresa
-    console.log('[PUT /api/orders/:id] Company access', {
-      userCompanyId: session.user.company_id,
-      orderCompanyId: existingOrder.company_id,
-      canAccess,
-    });
 
     if (!canAccess) {
       console.warn('[PUT /api/orders/:id] Bloqueado por empresa diferente');
@@ -188,9 +162,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     const body = (await request.json()) as PutBody;
-
-    // [LOG 5] Body recebido
-    console.log('[PUT /api/orders/:id] Body', body);
 
     const { status, notes } = body ?? {};
 
@@ -209,13 +180,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       const statusStr = String(status);
       const valid = ALLOWED_STATUS.includes(statusStr as (typeof ALLOWED_STATUS)[number]);
       const prismaValid = Object.values(OrderStatus).map(String).includes(statusStr);
-
-      // [LOG 6] Validação de status
-      console.log('[PUT /api/orders/:id] Status validation', {
-        input: statusStr,
-        valid,
-        prismaValid,
-      });
 
       if (!valid && !prismaValid) {
         return NextResponse.json(
@@ -257,11 +221,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
           paid_date: new Date(),
         },
       });
-
-      // [LOG 7] Atualização financeira
-      console.log('[PUT /api/orders/:id] Financial update on ENTREGUE', {
-        updatedCount: feResult.count,
-      });
     }
 
     await createAuditLog({
@@ -278,12 +237,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     });
 
     const mappedOrder = mapOrderToFrontend(updated);
-
-    // [LOG 8] Sucesso
-    console.log('[PUT /api/orders/:id] Success', {
-      orderId,
-      newStatus: mappedOrder.status,
-    });
 
     return NextResponse.json({
       success: true,

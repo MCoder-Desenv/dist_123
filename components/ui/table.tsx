@@ -2,16 +2,24 @@ import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
+function filterChildren(children: React.ReactNode) {
+  return React.Children.toArray(children).filter(
+    (child) => !(typeof child === 'string' && child.trim() === '')
+  );
+}
+
 const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
->(({ className, ...props }, ref) => (
+>(({ className, children, ...props }, ref) => (
   <div className="relative w-full overflow-auto">
     <table
       ref={ref}
       className={cn('w-full caption-bottom text-sm', className)}
       {...props}
-    />
+    >
+      {children}
+    </table>
   </div>
 ));
 Table.displayName = 'Table';
@@ -19,27 +27,31 @@ Table.displayName = 'Table';
 const TableHeader = React.forwardRef<
   HTMLTableSectionElement,
   React.HTMLAttributes<HTMLTableSectionElement>
->(({ className, ...props }, ref) => (
-  <thead ref={ref} className={cn('[&_tr]:border-b', className)} {...props} />
+>(({ className, children, ...props }, ref) => (
+  <thead ref={ref} className={cn('[&_tr]:border-b', className)} {...props}>
+    {filterChildren(children)}
+  </thead>
 ));
 TableHeader.displayName = 'TableHeader';
 
 const TableBody = React.forwardRef<
   HTMLTableSectionElement,
   React.HTMLAttributes<HTMLTableSectionElement>
->(({ className, ...props }, ref) => (
+>(({ className, children, ...props }, ref) => (
   <tbody
     ref={ref}
     className={cn('[&_tr:last-child]:border-0', className)}
     {...props}
-  />
+  >
+    {filterChildren(children)}
+  </tbody>
 ));
 TableBody.displayName = 'TableBody';
 
 const TableFooter = React.forwardRef<
   HTMLTableSectionElement,
   React.HTMLAttributes<HTMLTableSectionElement>
->(({ className, ...props }, ref) => (
+>(({ className, children, ...props }, ref) => (
   <tfoot
     ref={ref}
     className={cn(
@@ -47,14 +59,16 @@ const TableFooter = React.forwardRef<
       className
     )}
     {...props}
-  />
+  >
+    {filterChildren(children)}
+  </tfoot>
 ));
 TableFooter.displayName = 'TableFooter';
 
 const TableRow = React.forwardRef<
   HTMLTableRowElement,
   React.HTMLAttributes<HTMLTableRowElement>
->(({ className, ...props }, ref) => (
+>(({ className, children, ...props }, ref) => (
   <tr
     ref={ref}
     className={cn(
@@ -62,7 +76,9 @@ const TableRow = React.forwardRef<
       className
     )}
     {...props}
-  />
+  >
+    {filterChildren(children)}
+  </tr>
 ));
 TableRow.displayName = 'TableRow';
 

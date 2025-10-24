@@ -1,14 +1,39 @@
 'use client';
-
 import { useState, useEffect, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { getPaymentMethodLabel } from "@/lib/utils";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Search, Eye, Loader2, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSearchParams } from 'next/navigation';
@@ -28,7 +53,8 @@ interface Order {
   id?: string; // opcional para suportar "novo pedido" no Dialog
   order_number?: string;
   customer_name: string;
-  customer_email: string;
+  customer_email?: string;
+  customer_cnpj_cpf: string;
   customer_phone?: string;
   delivery_type: string;
   payment_method: string;
@@ -44,6 +70,11 @@ interface Order {
   created_at?: string;
   items?: OrderItem[];
   company_id?: string;
+  // `old` indica que este pedido veio do banco de dados com status CANCELADO
+  // e portanto deve ser efetivamente bloqueado no front-end.
+  // Importante: apenas quando `old === true` bloqueamos. Se o usuário
+  // selecionar CANCELADO localmente (sem salvar), `old` permanece false.
+  old?: boolean;
 }
 
 const STATUS_OPTIONS = [
@@ -54,14 +85,6 @@ const STATUS_OPTIONS = [
   { value: 'ENTREGUE', label: 'Entregue', color: 'bg-green-600 text-white' },
   { value: 'CANCELADO', label: 'Cancelado', color: 'bg-red-100 text-red-800' },
 ];
-
-const PAYMENT_METHODS: Record<string, string> = {
-  PIX: 'PIX',
-  CREDIT_CARD: 'Cartão de Crédito',
-  DEBIT_CARD: 'Cartão de Débito',
-  CASH: 'Dinheiro',
-  BANK_TRANSFER: 'Transferência',
-};
 
 const DELIVERY_TYPES: Record<string, string> = {
   DELIVERY: 'Entrega',
@@ -93,7 +116,6 @@ export function OrderManagement() {
   useEffect(() => {
     const openId = searchParams.get('open');
     if (!openId) return;
-
     // garante que a lista foi carregada e abre os detalhes
     (async () => {
       try {
@@ -112,23 +134,22 @@ export function OrderManagement() {
   useEffect(() => {
     const openId = searchParams.get('open');
     if (!openId) return;
-
     (async () => {
       try {
         if (!orders.length) await fetchOrders();
         await viewDetails({ id: openId } as any);
-
         // remove ?open=... da URL sem recarregar
         const url = new URL(window.location.href);
         url.searchParams.delete('open');
         window.history.replaceState({}, '', url.toString());
       } catch {}
     })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   useEffect(() => {
     fetchOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchOrders = async () => {
@@ -136,7 +157,13 @@ export function OrderManagement() {
       const res = await fetch('/api/orders', { cache: 'no-store' });
       if (res.ok) {
         const response = await res.json();
-        setOrders(response.data || []);
+        // Normalizamos: definimos `old` apenas quando o pedido veio do servidor (possui id)
+        // E estava com status CANCELADO no servidor -> only then old = true
+        const normalized: Order[] = (response.data || []).map((o: Order) => ({
+          ...o,
+          old: o.old ?? (!!o.id && o.status === 'CANCELADO'),
+        }));
+        setOrders(normalized);
       } else {
         setOrders([]);
       }
@@ -149,19 +176,36 @@ export function OrderManagement() {
     }
   };
 
+  // Helper: define se um pedido está "bloqueado"
+  // Apenas bloqueamos se o pedido veio do banco com status CANCELADO (old === true)
+  const isOrderLocked = (order?: Order) => {
+    return !!order && order.old === true;
+  };
+
   // Status inline agora NÃO faz PUT imediato; apenas marca alteração pendente
   const handleStatusChangeInline = (orderId: string, newStatus: string) => {
+    // Verifica se o pedido está bloqueado (evita alterações acidentais)
+    const prevOrder = orders.find((o) => o.id === orderId);
+    if (!prevOrder) return;
+
+    if (isOrderLocked(prevOrder)) {
+      toast.error('Pedido cancelado — não é possível editar o status.');
+      // Força recarregar visualmente para manter estado correto (descarta tentativa)
+      fetchOrders();
+      return;
+    }
+
     setPendingStatusChanges((prev) => {
       const updated = { ...prev, [orderId]: newStatus };
       return updated;
     });
 
-    // Atualiza visualmente na lista para feedback instantâneo
+    // Atualiza visualmente na lista para feedback instantâneo (mas NÃO marca old)
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
     );
 
-    // Se o Dialog está aberto para esse pedido, sincroniza também
+    // Se o Dialog está aberto para esse pedido, sincroniza também (não altera `old`)
     if (selectedOrder?.id === orderId) {
       setSelectedOrder({ ...selectedOrder, status: newStatus });
     }
@@ -172,13 +216,42 @@ export function OrderManagement() {
     const entries = Object.entries(pendingStatusChanges);
     if (entries.length === 0) return;
 
+    // Remove qualquer alteração que tente editar pedidos já bloqueados (old === true)
+    const skipped: string[] = [];
+    const entriesToApply = entries.filter(([orderId]) => {
+      const o = orders.find((ord) => ord.id === orderId);
+      if (!o) return false;
+      if (isOrderLocked(o)) {
+        skipped.push(orderId);
+        return false;
+      }
+      return true;
+    });
+
+    if (skipped.length > 0) {
+      skipped.slice(0, 3).forEach((id) =>
+        toast.error(`Alteração ignorada para pedido ${id.substring(0, 8).toUpperCase()} — pedido cancelado no servidor`)
+      );
+      if (skipped.length > 3) {
+        toast.error(`${skipped.length - 3} alterações adicionais foram ignoradas`);
+      }
+    }
+
+    if (entriesToApply.length === 0) {
+      setPendingStatusChanges({});
+      await fetchOrders();
+      return;
+    }
+
     setBatchUpdating(true);
     try {
       const results = await Promise.allSettled(
-        entries.map(([orderId, status]) =>
+        entriesToApply.map(([orderId, status]) =>
           fetch(`/api/orders/${orderId}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+            },
             body: JSON.stringify({ status }),
           }).then(async (res) => {
             if (!res.ok) {
@@ -193,21 +266,29 @@ export function OrderManagement() {
       // Contabiliza sucessos/erros
       const successCount = results.filter((r) => r.status === 'fulfilled').length;
       const failures = results
-        .map((r, idx) => (r.status === 'rejected' ? { orderId: entries[idx][0], error: (r.reason as Error)?.message } : null))
+        .map((r, idx) =>
+          r.status === 'rejected'
+            ? { orderId: entriesToApply[idx][0], error: (r.reason as Error)?.message }
+            : null
+        )
         .filter(Boolean) as { orderId: string; error: string }[];
 
       if (successCount > 0) {
-        toast.success(`${successCount} ${successCount === 1 ? 'pedido atualizado' : 'pedidos atualizados'} com sucesso`);
+        toast.success(
+          `${successCount} ${successCount === 1 ? 'pedido atualizado' : 'pedidos atualizados'} com sucesso`
+        );
       }
+
       if (failures.length > 0) {
-        // Mostra erros resumidos
-        failures.slice(0, 3).forEach(f => toast.error(`Falha ao atualizar pedido ${f.orderId.substring(0, 8).toUpperCase()}: ${f.error}`));
+        failures.slice(0, 3).forEach((f) =>
+          toast.error(`Falha ao atualizar pedido ${f.orderId.substring(0, 8).toUpperCase()}: ${f.error}`)
+        );
         if (failures.length > 3) {
-          toast.error(`+${failures.length - 3} falhas adicionais`);
+          toast.error(`${failures.length - 3} falhas adicionais`);
         }
       }
 
-      // Refetch para garantir consistência
+      // Refetch para garantir consistência (servidor definirá se o pedido está CANCELADO e, assim, old será aplicado)
       await fetchOrders();
       setPendingStatusChanges({});
     } catch (e) {
@@ -230,7 +311,12 @@ export function OrderManagement() {
         const res = await fetch(`/api/orders/${order.id}`);
         if (res.ok) {
           const response = await res.json();
-          setSelectedOrder(response.data);
+          // Garantir `old` apenas quando veio do servidor e status === 'CANCELADO'
+          const serverOrder: Order = {
+            ...response.data,
+            old: response.data?.old ?? (!!response.data?.id && response.data?.status === 'CANCELADO'),
+          };
+          setSelectedOrder(serverOrder);
           setDetailsOpen(true);
         } else {
           const err = await res.json().catch(() => ({}));
@@ -240,13 +326,14 @@ export function OrderManagement() {
         toast.error('Erro ao carregar detalhes');
       }
     } else {
-      setSelectedOrder(order);
+      // pedido sem id => novo pedido local (old = false)
+      setSelectedOrder({ ...order, old: false });
       setDetailsOpen(true);
     }
   };
 
   const getStatusBadge = (status: string) => {
-    const statusOption = STATUS_OPTIONS.find(s => s.value === status);
+    const statusOption = STATUS_OPTIONS.find((s) => s.value === status);
     return (
       <Badge className={statusOption?.color || 'bg-gray-100 text-gray-800'}>
         {statusOption?.label || status}
@@ -255,22 +342,19 @@ export function OrderManagement() {
   };
 
   const filteredOrders = useMemo(() => {
-    return orders.filter(order => {
+    return orders.filter((order) => {
       const matchesSearch =
         (order.order_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (order.customer_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (order.customer_email || '').toLowerCase().includes(searchTerm.toLowerCase());
-
       const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
-
       return matchesSearch && matchesStatus;
     });
   }, [orders, searchTerm, statusFilter]);
 
-  // POST novo pedido (mantém igual)
+  // POST novo pedido
   const handleSaveNewOrder = async () => {
     if (!selectedOrder) return;
-
     if (!selectedOrder.customer_name || !selectedOrder.customer_email) {
       toast.error('Preencha nome e e-mail do cliente.');
       return;
@@ -303,6 +387,7 @@ export function OrderManagement() {
         customer_name: selectedOrder.customer_name,
         customer_email: selectedOrder.customer_email,
         customer_phone: selectedOrder.customer_phone,
+        customer_cnpj_cpf: selectedOrder.customer_cnpj_cpf,
         delivery_address,
         delivery_type: selectedOrder.delivery_type,
         payment_method: selectedOrder.payment_method,
@@ -314,7 +399,9 @@ export function OrderManagement() {
 
       const res = await fetch('/api/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify(body),
       });
 
@@ -327,6 +414,7 @@ export function OrderManagement() {
       toast.success('Pedido criado com sucesso!');
       setDetailsOpen(false);
       setSelectedOrder(null);
+      // Recarregar lista: os pedidos vindos do servidor terão `old` calculado a partir do servidor (status)
       await fetchOrders();
     } catch (e) {
       toast.error('Erro ao salvar pedido');
@@ -335,14 +423,26 @@ export function OrderManagement() {
     }
   };
 
-  // PUT pedido existente via Dialog (mantém igual)
+  // PUT pedido existente via Dialog
   const handleUpdateOrder = async () => {
     if (!selectedOrder?.id) return;
+
+    // Não permitir update se pedido estiver bloqueado (veio do servidor com CANCELADO)
+    if (isOrderLocked(selectedOrder)) {
+      toast.error('Pedido cancelado — não é possível atualizar.');
+      // Recarrega a versão do servidor para garantir consistência
+      await fetchOrders();
+      setDetailsOpen(false);
+      return;
+    }
+
     setSaving(true);
     try {
       const res = await fetch(`/api/orders/${selectedOrder.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           status: selectedOrder.status,
           notes: selectedOrder.notes ?? undefined,
@@ -356,12 +456,18 @@ export function OrderManagement() {
       }
 
       if (json?.data) {
-        setSelectedOrder(json.data);
+        // Após atualização, se o servidor retornou CANCELADO, marcamos `old = true`.
+        // Caso contrário, old = false (porque somente o servidor define que ele foi efetivamente cancelado).
+        setSelectedOrder({
+          ...json.data,
+          old: json.data?.status === 'CANCELADO' ? true : false,
+        });
       }
 
       toast.success('Pedido atualizado com sucesso!');
       setDetailsOpen(false);
       await fetchOrders();
+
       setPendingStatusChanges((prev) => {
         if (selectedOrder.id && prev[selectedOrder.id]) {
           const { [selectedOrder.id]: _, ...rest } = prev;
@@ -387,7 +493,9 @@ export function OrderManagement() {
       <Card>
         <CardHeader>
           <CardTitle>Gestão de Pedidos</CardTitle>
-          <CardDescription>Visualize e gerencie todos os pedidos da sua distribuidora</CardDescription>
+          <CardDescription>
+            Visualize e gerencie todos os pedidos da sua distribuidora
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="mb-4 flex gap-4">
@@ -400,13 +508,14 @@ export function OrderManagement() {
                 className="pl-8"
               />
             </div>
+
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-48">
                 <SelectValue placeholder="Filtrar por status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os Status</SelectItem>
-                {STATUS_OPTIONS.map(status => (
+                {STATUS_OPTIONS.map((status) => (
                   <SelectItem key={status.value} value={status.value}>
                     {status.label}
                   </SelectItem>
@@ -429,6 +538,7 @@ export function OrderManagement() {
                   <TableHead>Ações</TableHead>
                 </TableRow>
               </TableHeader>
+
               <TableBody>
                 {filteredOrders.length === 0 ? (
                   <TableRow>
@@ -447,29 +557,38 @@ export function OrderManagement() {
                         </div>
                       </TableCell>
                       <TableCell>{DELIVERY_TYPES[order.delivery_type] || order.delivery_type}</TableCell>
-                      <TableCell>{PAYMENT_METHODS[order.payment_method] || order.payment_method}</TableCell>
+                      <TableCell>{getPaymentMethodLabel(order.payment_method)}</TableCell>
                       <TableCell>R$ {order.total.toFixed(2)}</TableCell>
+
                       <TableCell>
-                        <Select
-                          value={order.status}
-                          onValueChange={(value) => handleStatusChangeInline(order.id!, value)}
-                          disabled={batchUpdating}
-                        >
-                          <SelectTrigger className="w-40">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {STATUS_OPTIONS.map(status => (
-                              <SelectItem key={status.value} value={status.value}>
-                                {status.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        {/* Se o pedido veio do servidor como CANCELADO (old === true), bloqueia edição */}
+                        {isOrderLocked(order) ? (
+                          // Mostrar badge quando bloqueado (mais claro para o usuário)
+                          getStatusBadge(order.status)
+                        ) : (
+                          <Select
+                            value={order.status}
+                            onValueChange={(value) => handleStatusChangeInline(order.id!, value)}
+                            disabled={batchUpdating}
+                          >
+                            <SelectTrigger className="w-40">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {STATUS_OPTIONS.map((status) => (
+                                <SelectItem key={status.value} value={status.value}>
+                                  {status.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                       </TableCell>
+
                       <TableCell>
                         {order.created_at ? new Date(order.created_at).toLocaleDateString('pt-BR') : '--'}
                       </TableCell>
+
                       <TableCell>
                         <Button
                           variant="outline"
@@ -521,6 +640,7 @@ export function OrderManagement() {
             <DialogTitle>
               {isNewOrder ? 'Novo Pedido' : `Detalhes do Pedido #${selectedOrder?.order_number}`}
             </DialogTitle>
+
             {!isNewOrder && selectedOrder?.created_at && (
               <DialogDescription>
                 Realizado em {new Date(selectedOrder.created_at).toLocaleString('pt-BR')}
@@ -536,6 +656,9 @@ export function OrderManagement() {
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div>
                     <span className="text-gray-600">Nome:</span> {selectedOrder.customer_name || '-'}
+                  </div>
+                  <div>
+                    <span className="text-gray-600">CPF/CNPJ:</span> {selectedOrder.customer_cnpj_cpf}
                   </div>
                   <div>
                     <span className="text-gray-600">E-mail:</span> {selectedOrder.customer_email || '-'}
@@ -579,9 +702,11 @@ export function OrderManagement() {
                       {selectedOrder.items?.map((item) => (
                         <TableRow key={item.id}>
                           <TableCell>
-                            {item.product_name}
+                            {item.variant_name ?
+                              item.variant_name : item.product_name
+                            }
                             {item.variant_name && (
-                              <span className="text-sm text-gray-500"> ({item.variant_name})</span>
+                              <span className="text-sm text-gray-500"> ({item.product_name})</span>
                             )}
                           </TableCell>
                           <TableCell>{item.quantity}</TableCell>
@@ -601,16 +726,20 @@ export function OrderManagement() {
                     <span className="text-gray-600">Subtotal:</span>
                     <span>R$ {selectedOrder.subtotal.toFixed(2)}</span>
                   </div>
-                  <div className="flex justify-between text-sm mb-2">
+                  {/* <div className="flex justify-between text-sm mb-2">
                     <span className="text-gray-600">Taxa de Entrega:</span>
                     <span>R$ {selectedOrder.delivery_fee.toFixed(2)}</span>
-                  </div>
+                  </div> */}
                   <div className="flex justify-between font-semibold text-lg">
                     <span>Total:</span>
                     <span>R$ {selectedOrder.total.toFixed(2)}</span>
                   </div>
                 </div>
               )}
+
+              <div>
+                <h3 className="font-semibold mb-2">Pagamento: {getPaymentMethodLabel(selectedOrder.payment_method)}</h3>
+              </div>
 
               {/* Observações */}
               {selectedOrder.notes !== undefined && selectedOrder.notes !== null && (
@@ -623,22 +752,31 @@ export function OrderManagement() {
               {/* Status - único campo editável no Dialog */}
               <div>
                 <h3 className="font-semibold mb-2">Status do Pedido</h3>
-                <Select
-                  value={selectedOrder.status}
-                  onValueChange={(value) => setSelectedOrder({ ...selectedOrder, status: value })}
-                  disabled={saving || batchUpdating}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STATUS_OPTIONS.map(status => (
-                      <SelectItem key={status.value} value={status.value}>
-                        {status.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+
+                {/* Se o pedido veio do servidor com CANCELADO (old === true), desabilita edição no Dialog */}
+                {isOrderLocked(selectedOrder) ? (
+                  <div>
+                    {getStatusBadge(selectedOrder.status)}
+                    <div className="mt-2 text-sm text-red-600">Pedido cancelado no servidor — este pedido está bloqueado e não pode ser editado.</div>
+                  </div>
+                ) : (
+                  <Select
+                    value={selectedOrder.status}
+                    onValueChange={(value) => setSelectedOrder({ ...selectedOrder, status: value })}
+                    disabled={saving || batchUpdating}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STATUS_OPTIONS.map((status) => (
+                        <SelectItem key={status.value} value={status.value}>
+                          {status.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               {/* Footer: Botões */}
@@ -646,13 +784,16 @@ export function OrderManagement() {
                 <Button variant="outline" onClick={() => setDetailsOpen(false)} disabled={saving || batchUpdating}>
                   Cancelar
                 </Button>
+
+                {/* Se o pedido estiver bloqueado, desabilitamos salvar/atualizar */}
                 <Button
                   onClick={isNewOrder ? handleSaveNewOrder : handleUpdateOrder}
-                  disabled={saving || batchUpdating}
+                  disabled={saving || batchUpdating || (!isNewOrder && isOrderLocked(selectedOrder))}
                 >
                   {(saving || batchUpdating) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   {isNewOrder ? 'Salvar' : 'Atualizar'}
                 </Button>
+
                 <Button
                   variant="outline"
                   onClick={() => selectedOrder?.id && window.open(`/print/pedidos/${selectedOrder.id}`, '_blank')}

@@ -1,4 +1,3 @@
-
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession, hasPermission, getCompanyFilter, getCompanyIdForCreate } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
@@ -11,10 +10,10 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerAuthSession();
-    
+  
     if (!session?.user) {
       return NextResponse.json(
-        { success: false, error: 'Não autorizado' },
+        { success: false, message: 'Não autorizado' },
         { status: 401 }
       );
     }
@@ -22,7 +21,7 @@ export async function GET(request: NextRequest) {
     // Verificar permissão
     if (!hasPermission(session.user.role, ['ADMINISTRADOR', 'MASTER_DIST', 'FINANCEIRO'])) {
       return NextResponse.json(
-        { success: false, error: 'Sem permissão' },
+        { success: false, message: 'Sem permissão' },
         { status: 403 }
       );
     }
@@ -40,7 +39,7 @@ export async function GET(request: NextRequest) {
     const where: any = {
       ...companyFilter
     };
-    
+  
     if (type) {
       where.type = type;
     }
@@ -77,7 +76,7 @@ export async function GET(request: NextRequest) {
       prisma.financialEntry.groupBy({
         by: ['type', 'status'],
         where: {
-      ...getCompanyFilter(session),
+          ...getCompanyFilter(session),
           created_at: startDate && endDate ? {
             gte: new Date(startDate),
             lte: new Date(endDate)
@@ -135,7 +134,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Financial entries GET error:', error);
     return NextResponse.json(
-      { success: false, error: 'Erro interno do servidor' },
+      { success: false, message: 'Erro interno do servidor' },
       { status: 500 }
     );
   }
@@ -145,10 +144,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerAuthSession();
-    
+  
     if (!session?.user) {
       return NextResponse.json(
-        { success: false, error: 'Não autorizado' },
+        { success: false, message: 'Não autorizado' },
         { status: 401 }
       );
     }
@@ -156,14 +155,14 @@ export async function POST(request: NextRequest) {
     // Verificar permissão
     if (!hasPermission(session.user.role, ['ADMINISTRADOR', 'MASTER_DIST', 'FINANCEIRO'])) {
       return NextResponse.json(
-        { success: false, error: 'Sem permissão' },
+        { success: false, message: 'Sem permissão' },
         { status: 403 }
       );
     }
 
     const body = await request.json();
     const validatedData = financialEntrySchema.parse(body);
-    
+  
     const companyId = getCompanyIdForCreate(session);
 
     const entry = await prisma.financialEntry.create({
@@ -198,16 +197,16 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Financial entries POST error:', error);
-    
+  
     if (error instanceof Error && 'code' in error) {
       return NextResponse.json(
-        { success: false, error: 'Dados inválidos' },
+        { success: false, message: 'Dados inválidos' },
         { status: 400 }
       );
     }
 
     return NextResponse.json(
-      { success: false, error: 'Erro interno do servidor' },
+      { success: false, message: 'Erro interno do servidor' },
       { status: 500 }
     );
   }

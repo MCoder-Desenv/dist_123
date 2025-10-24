@@ -1,7 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,9 +35,19 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Plus, TrendingUp, TrendingDown, DollarSign, Filter, Pencil, Trash2 } from 'lucide-react';
+import {
+  Plus,
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  Filter,
+  Pencil,
+  Trash2,
+} from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { toast } from 'sonner';
+import { ConfirmationDialog } from '@/components/ui/confirmation-dialog';
 
 interface FinancialEntry {
   id: string;
@@ -65,7 +81,7 @@ interface FinancialSummary {
   saldo: number;
 }
 
-export function FinancialManagement() {
+export function FinancialManagement(): JSX.Element {
   const [entries, setEntries] = useState<FinancialEntry[]>([]);
   const [summary, setSummary] = useState<FinancialSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -74,6 +90,7 @@ export function FinancialManagement() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<FinancialEntry | null>(null);
+
   const [formData, setFormData] = useState({
     type: 'RECEITA',
     amount: '',
@@ -85,9 +102,35 @@ export function FinancialManagement() {
     status: 'PENDENTE',
   });
 
+  // ConfirmationDialog global state
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogType, setDialogType] = useState<'confirmation' | 'alert' | 'error'>('confirmation');
+  const [dialogTitle, setDialogTitle] = useState<string>('');
+  const [dialogDescription, setDialogDescription] = useState<string | React.ReactNode | undefined>(undefined);
+  const [dialogButtons, setDialogButtons] = useState<
+    { label: string; onClick: () => void; variant?: 'default' | 'outline' | 'destructive' | 'secondary' | 'ghost' | 'link' }[]
+  >([]);
+
+  // Delete target
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; description?: string } | null>(null);
+
   useEffect(() => {
     fetchFinancialData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterType, filterStatus]);
+
+  const showDialog = (
+    type: 'confirmation' | 'alert' | 'error',
+    title: string,
+    description?: string | React.ReactNode,
+    buttons?: { label: string; onClick: () => void; variant?: 'default' | 'outline' | 'destructive' | 'secondary' | 'ghost' | 'link' }[]
+  ) => {
+    setDialogType(type);
+    setDialogTitle(title);
+    setDialogDescription(description);
+    setDialogButtons(buttons && buttons.length > 0 ? buttons.slice(0, 3) : [{ label: 'OK', onClick: () => {}, variant: 'default' }]);
+    setDialogOpen(true);
+  };
 
   const fetchFinancialData = async () => {
     try {
@@ -97,13 +140,40 @@ export function FinancialManagement() {
       if (filterStatus !== 'all') params.append('status', filterStatus);
 
       const response = await fetch(`/api/financial?${params.toString()}`);
-      if (!response.ok) throw new Error('Erro ao buscar dados');
+      const payload = await response.json();
 
-      const data = await response.json();
-      setEntries(data.entries || []);
-      setSummary(data.summary || null);
+      if (!response.ok || !payload.success) {
+        console.error('Erro ao buscar dados financeiros:', payload);
+        setEntries([]);
+        setSummary(null);
+        showDialog('error', 'Erro ao buscar dados', payload?.message || 'Ocorreu um erro ao carregar dados financeiros.');
+        return;
+      }
+
+      const entriesData: FinancialEntry[] = payload.data || [];
+
+      const s = payload.summary || {};
+      const mappedSummary: FinancialSummary = {
+        receita: {
+          total: Number(s.total_receitas || 0),
+          pago: Number(s.receitas_pagas || 0),
+          pendente: Number(s.receitas_pendentes || 0),
+        },
+        despesa: {
+          total: Number(s.total_despesas || 0),
+          pago: Number(s.despesas_pagas || 0),
+          pendente: Number(s.despesas_pendentes || 0),
+        },
+        saldo: Number(s.saldo_total || 0),
+      };
+
+      setEntries(entriesData);
+      setSummary(mappedSummary);
     } catch (error) {
       console.error('Erro ao carregar dados financeiros:', error);
+      setEntries([]);
+      setSummary(null);
+      showDialog('error', 'Erro ao carregar dados', 'Ocorreu um erro ao carregar dados financeiros.');
     } finally {
       setLoading(false);
     }
@@ -121,7 +191,19 @@ export function FinancialManagement() {
         }),
       });
 
-      if (!response.ok) throw new Error('Erro ao criar lançamento');
+      const payload = await response.json();
+
+      if (!response.ok || !payload.success) {
+        console.error('Erro ao criar lançamento:', payload);
+        toast.error(payload?.message || 'Erro ao criar lançamento');
+        showDialog('error', 'Erro ao criar lançamento', payload?.message || 'Erro ao criar lançamento.');
+        return;
+      }
+
+      toast.success(payload?.message || 'Lançamento criado com sucesso!');
+      showDialog('confirmation', 'Lançamento criado', payload?.message || 'Lançamento criado com sucesso!', [
+        { label: 'OK', onClick: () => {}, variant: 'default' },
+      ]);
 
       setIsAddDialogOpen(false);
       setFormData({
@@ -137,7 +219,8 @@ export function FinancialManagement() {
       fetchFinancialData();
     } catch (error) {
       console.error('Erro ao adicionar lançamento:', error);
-      alert('Erro ao adicionar lançamento');
+      toast.error('Erro ao adicionar lançamento');
+      showDialog('error', 'Erro ao adicionar lançamento', 'Ocorreu um erro ao adicionar lançamento.');
     }
   };
 
@@ -155,30 +238,64 @@ export function FinancialManagement() {
         }),
       });
 
-      if (!response.ok) throw new Error('Erro ao atualizar lançamento');
+      const payload = await response.json();
+
+      if (!response.ok || !payload.success) {
+        console.error('Erro ao atualizar lançamento:', payload);
+        toast.error(payload?.message || 'Erro ao atualizar lançamento');
+        showDialog('error', 'Erro ao atualizar lançamento', payload?.message || 'Erro ao atualizar lançamento.');
+        return;
+      }
+
+      toast.success(payload?.message || 'Lançamento atualizado com sucesso!');
+      showDialog('confirmation', 'Lançamento atualizado', payload?.message || 'Lançamento atualizado com sucesso!', [
+        { label: 'OK', onClick: () => {}, variant: 'default' },
+      ]);
 
       setIsEditDialogOpen(false);
       setEditingEntry(null);
       fetchFinancialData();
     } catch (error) {
       console.error('Erro ao atualizar lançamento:', error);
-      alert('Erro ao atualizar lançamento');
+      toast.error('Erro ao atualizar lançamento');
+      showDialog('error', 'Erro ao atualizar lançamento', 'Ocorreu um erro ao atualizar o lançamento.');
     }
   };
 
-  const handleDeleteEntry = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir este lançamento?')) return;
+  const openDeleteDialog = (entry: FinancialEntry) => {
+    setDeleteTarget({ id: entry.id, description: entry.description });
+    showDialog('confirmation', 'Confirmar exclusão', `Tem certeza que deseja excluir: "${entry.description}"?`, [
+      { label: 'Cancelar', onClick: () => {}, variant: 'default' },
+      { label: 'Excluir', onClick: () => handleDeleteEntryConfirmed(entry.id), variant: 'destructive' },
+    ]);
+  };
 
+  const handleDeleteEntryConfirmed = async (id: string) => {
     try {
       const response = await fetch(`/api/financial/${id}`, {
         method: 'DELETE',
       });
 
-      if (!response.ok) throw new Error('Erro ao excluir lançamento');
+      const payload = await response.json();
+
+      if (!response.ok || !payload.success) {
+        console.error('Erro ao excluir lançamento:', payload);
+        toast.error(payload?.message || 'Erro ao excluir lançamento');
+        showDialog('error', 'Erro ao excluir lançamento', payload?.message || 'Erro ao excluir lançamento.');
+        return;
+      }
+
+      toast.success(payload?.message || 'Lançamento excluído com sucesso!');
+      showDialog('confirmation', 'Lançamento excluído', payload?.message || 'Lançamento excluído com sucesso!', [
+        { label: 'OK', onClick: () => {}, variant: 'default' },
+      ]);
       fetchFinancialData();
     } catch (error) {
       console.error('Erro ao excluir lançamento:', error);
-      alert('Erro ao excluir lançamento');
+      toast.error('Erro ao excluir lançamento');
+      showDialog('error', 'Erro ao excluir lançamento', 'Ocorreu um erro ao excluir o lançamento.');
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
@@ -197,15 +314,16 @@ export function FinancialManagement() {
     setIsEditDialogOpen(true);
   };
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-    }).format(value);
-  };
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+      value
+    );
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+    const variants: Record<
+      string,
+      'default' | 'secondary' | 'destructive' | 'outline'
+    > = {
       PENDENTE: 'secondary',
       PAGO: 'default',
       VENCIDO: 'destructive',
@@ -216,65 +334,87 @@ export function FinancialManagement() {
 
   return (
     <div className="space-y-6">
-      {/* Cards de Resumo */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Resumo */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Receitas (Total)</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-600" />
+            <CardTitle className="text-sm font-medium">Total em Caixa</CardTitle>
+            <DollarSign className="h-4 w-4 text-gray-700" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {formatCurrency(summary?.receita?.total || 0)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Pago: {formatCurrency(summary?.receita?.pago || 0)}
-            </p>
+            {(() => {
+              const totalEmCaixa =
+                (summary?.receita?.pago || 0) - (summary?.despesa?.pago || 0);
+              const positive = totalEmCaixa >= 0;
+              return (
+                <>
+                  <div className={`text-2xl font-bold ${positive ? 'text-green-600' : 'text-red-600'}`}>
+                    {formatCurrency(totalEmCaixa)}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Receitas pagas {positive ? '−' : '−'} Despesas pagas
+                  </p>
+                </>
+              );
+            })()}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Despesas (Total)</CardTitle>
+            <CardTitle className="text-sm font-medium">Despesas (Pagas)</CardTitle>
             <TrendingDown className="h-4 w-4 text-red-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">
-              {formatCurrency(summary?.despesa?.total || 0)}
+              {formatCurrency(summary?.despesa?.pago || 0)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Pago: {formatCurrency(summary?.despesa?.pago || 0)}
+              Total de despesas com status PAGO
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Saldo</CardTitle>
-            <DollarSign className="h-4 w-4 text-blue-600" />
+            <CardTitle className="text-sm font-medium">Despesas (Pendentes)</CardTitle>
+            <TrendingDown className="h-4 w-4 text-orange-600" />
           </CardHeader>
           <CardContent>
-            <div
-              className={`text-2xl font-bold ${
-                (summary?.saldo || 0) >= 0 ? 'text-green-600' : 'text-red-600'
-              }`}
-            >
-              {formatCurrency(summary?.saldo || 0)}
+            <div className="text-2xl font-bold text-orange-600">
+              {formatCurrency(summary?.despesa?.pendente || 0)}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Receitas - Despesas pagas</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Total de despesas pendentes
+            </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">A Receber</CardTitle>
+            <CardTitle className="text-sm font-medium">Receitas (Pagas)</CardTitle>
+            <DollarSign className="h-4 w-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">
+              {formatCurrency(summary?.receita?.pago || 0)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Total de receitas com status PAGO
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Receitas (Pendentes)</CardTitle>
             <TrendingUp className="h-4 w-4 text-orange-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-orange-600">
               {formatCurrency(summary?.receita?.pendente || 0)}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Contas pendentes</p>
+            <p className="text-xs text-muted-foreground mt-1">Total de receitas pendentes</p>
           </CardContent>
         </Card>
       </div>
@@ -285,8 +425,12 @@ export function FinancialManagement() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
               <CardTitle>Gestão Financeira</CardTitle>
-              <CardDescription>Controle de contas a receber e fluxo de caixa</CardDescription>
+              <CardDescription>
+                Controle de contas a receber e fluxo de caixa
+              </CardDescription>
             </div>
+
+            {/* Botão Novo Lançamento */}
             <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
               <DialogTrigger asChild>
                 <Button>
@@ -294,6 +438,7 @@ export function FinancialManagement() {
                   Novo Lançamento
                 </Button>
               </DialogTrigger>
+
               <DialogContent className="max-w-2xl">
                 <DialogHeader>
                   <DialogTitle>Novo Lançamento Financeiro</DialogTitle>
@@ -301,13 +446,16 @@ export function FinancialManagement() {
                     Adicione uma nova receita ou despesa ao sistema
                   </DialogDescription>
                 </DialogHeader>
+
                 <form onSubmit={handleAddEntry} className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Tipo</Label>
                       <Select
                         value={formData.type}
-                        onValueChange={(value) => setFormData({ ...formData, type: value })}
+                        onValueChange={(value) =>
+                          setFormData({ ...formData, type: value })
+                        }
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -326,7 +474,9 @@ export function FinancialManagement() {
                         step="0.01"
                         required
                         value={formData.amount}
-                        onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, amount: e.target.value })
+                        }
                       />
                     </div>
 
@@ -335,7 +485,9 @@ export function FinancialManagement() {
                       <Input
                         required
                         value={formData.description}
-                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, description: e.target.value })
+                        }
                       />
                     </div>
 
@@ -343,7 +495,9 @@ export function FinancialManagement() {
                       <Label>Categoria</Label>
                       <Input
                         value={formData.category}
-                        onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, category: e.target.value })
+                        }
                         placeholder="Ex: Vendas, Fornecedores, Aluguel"
                       />
                     </div>
@@ -373,7 +527,9 @@ export function FinancialManagement() {
                       <Input
                         type="date"
                         value={formData.due_date}
-                        onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, due_date: e.target.value })
+                        }
                       />
                     </div>
 
@@ -382,7 +538,9 @@ export function FinancialManagement() {
                       <Input
                         type="date"
                         value={formData.paid_date}
-                        onChange={(e) => setFormData({ ...formData, paid_date: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, paid_date: e.target.value })
+                        }
                       />
                     </div>
 
@@ -390,7 +548,9 @@ export function FinancialManagement() {
                       <Label>Status</Label>
                       <Select
                         value={formData.status}
-                        onValueChange={(value) => setFormData({ ...formData, status: value })}
+                        onValueChange={(value) =>
+                          setFormData({ ...formData, status: value })
+                        }
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -456,7 +616,7 @@ export function FinancialManagement() {
             </div>
           </div>
 
-          {/* Tabela de Lançamentos */}
+          {/* Tabela */}
           {loading ? (
             <div className="text-center py-8 text-gray-500">Carregando...</div>
           ) : entries.length === 0 ? (
@@ -478,46 +638,45 @@ export function FinancialManagement() {
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
+
                 <TableBody>
                   {entries.map((entry) => (
                     <TableRow key={entry.id}>
                       <TableCell>
-                        {format(new Date(entry.created_at), 'dd/MM/yyyy', { locale: ptBR })}
+                        {format(new Date(entry.created_at), 'dd/MM/yyyy', {
+                          locale: ptBR,
+                        })}
                       </TableCell>
+
                       <TableCell>
                         <Badge variant={entry.type === 'RECEITA' ? 'default' : 'secondary'}>
                           {entry.type}
                         </Badge>
                       </TableCell>
+
                       <TableCell>{entry.description}</TableCell>
                       <TableCell>{entry.category || '-'}</TableCell>
+
                       <TableCell
-                        className={
-                          entry.type === 'RECEITA' ? 'text-green-600' : 'text-red-600'
-                        }
+                        className={entry.type === 'RECEITA' ? 'text-green-600' : 'text-red-600'}
                       >
                         {formatCurrency(entry.amount)}
                       </TableCell>
+
                       <TableCell>{getStatusBadge(entry.status)}</TableCell>
+
                       <TableCell>
                         {entry.due_date
                           ? format(new Date(entry.due_date), 'dd/MM/yyyy', { locale: ptBR })
                           : '-'}
                       </TableCell>
+
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openEditDialog(entry)}
-                          >
+                          <Button variant="ghost" size="sm" onClick={() => openEditDialog(entry)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteEntry(entry.id)}
-                          >
+                          <Button variant="ghost" size="sm" disabled={!!entry.order?.id} onClick={() => openDeleteDialog(entry)}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
@@ -538,6 +697,7 @@ export function FinancialManagement() {
             <DialogTitle>Editar Lançamento</DialogTitle>
             <DialogDescription>Atualize as informações do lançamento</DialogDescription>
           </DialogHeader>
+
           <form onSubmit={handleUpdateEntry} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -597,11 +757,7 @@ export function FinancialManagement() {
             </div>
 
             <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsEditDialogOpen(false)}
-              >
+              <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
                 Cancelar
               </Button>
               <Button type="submit">Salvar Alterações</Button>
@@ -609,6 +765,16 @@ export function FinancialManagement() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Global ConfirmationDialog */}
+      <ConfirmationDialog
+        open={dialogOpen}
+        onOpenChange={(open) => setDialogOpen(open)}
+        type={dialogType}
+        title={dialogTitle}
+        description={dialogDescription}
+        buttons={dialogButtons}
+      />
     </div>
   );
 }

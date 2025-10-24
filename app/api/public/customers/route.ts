@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db';
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { user_id, email, company_id } = body;
+    const { user_id, cnpj_cpf, company_id } = body;
 
     if (!company_id) {
       return NextResponse.json({ error: 'company_id é obrigatório' }, { status: 400 });
@@ -23,6 +23,7 @@ export async function POST(req: Request) {
         select: {
           id: true,
           email: true,
+          cnpj_cpf: true,
           name: true,
           phone: true,
           created_at: true,
@@ -32,18 +33,18 @@ export async function POST(req: Request) {
     }
 
     // 2) Se não achar por id e tiver email, fallback por email + company_id
-    if (!customer && email) {
-      const emailLower = String(email).trim().toLowerCase();
+    if (!customer && cnpj_cpf) {
       customer = await prisma.customer.findUnique({
         where: {
-          company_id_email: {
+          company_id_cnpj_cpf: {
             company_id: String(company_id),
-            email: emailLower,
+            cnpj_cpf,
           },
         },
         select: {
           id: true,
           email: true,
+          cnpj_cpf: true,
           name: true,
           phone: true,
           created_at: true,
@@ -52,9 +53,10 @@ export async function POST(req: Request) {
       }).catch(async () => {
         // se findUnique falhar por not unique key, tenta findFirst
         return await prisma.customer.findFirst({
-          where: { company_id: String(company_id), email: emailLower },
+          where: { company_id: String(company_id), cnpj_cpf },
           select: {
             id: true,
+            cnpj_cpf: true,
             email: true,
             name: true,
             phone: true,

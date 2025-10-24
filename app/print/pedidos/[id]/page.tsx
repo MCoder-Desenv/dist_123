@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { getServerAuthSession, canAccessCompany } from '@/lib/auth';
 import { notFound } from 'next/navigation';
 import PrintActions from '@/components/print/print-actions';
+import '@/app/print/print.css';
 
 type Props = {
   params: { id: string };
@@ -52,47 +53,38 @@ export default async function PrintOrderPage({ params, searchParams }: Props) {
 
   const address = (order.delivery_address ?? {}) as any;
 
+  // 💰 Formata valores monetários
   const formatMoney = (n?: number | string) =>
     typeof n === 'number'
       ? n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
       : (Number(n || 0)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-  return (
-    <div className="print-root">
-      <style>{`
-        :root { --muted: #666; --text: #111; --brand: #111827; }
-        body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; color: var(--text); margin: 0; padding: 0; }
-        .wrap { max-width: ${mode === 'cupom' ? '320px' : '720px'}; margin: 16px auto; padding: ${mode === 'cupom' ? '8px' : '24px'}; }
-        header { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom: 12px; }
-        .brand { font-weight:700; font-size: ${mode === 'cupom' ? '14px' : '20px'}; }
-        .meta { font-size: ${mode === 'cupom' ? '11px' : '13px'}; color: var(--muted); text-align:right; }
-        h1 { margin: 0 0 8px 0; font-size: 16px; }
-        .customer { margin-bottom: 8px; font-size: ${mode === 'cupom' ? '12px' : '14px'}; }
-        table { width: 100%; border-collapse: collapse; font-size: ${mode === 'cupom' ? '12px' : '13px'}; margin-top: 8px; }
-        th, td { padding: ${mode === 'cupom' ? '6px 0' : '8px 0'}; text-align:left; }
-        thead th { color: var(--muted); font-weight:600; font-size: ${mode === 'cupom' ? '12px' : '13px'}; }
-        tbody tr + tr td { border-top: 1px dashed #e6e6e6; }
-        .totals { margin-top: 10px; font-size: ${mode === 'cupom' ? '12px' : '14px'}; }
-        .totals .row { display:flex; justify-content:space-between; padding:4px 0; }
-        .notes { margin-top: 8px; color: var(--muted); white-space: pre-wrap; font-size: ${mode === 'cupom' ? '11px' : '13px'}; }
-        .print-actions { margin: 12px 0; display:flex; gap:8px; justify-content:flex-end; }
-        .btn { background: #111827; color: white; border: none; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; }
-        @media print {
-          .print-actions { display: none; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          @page { margin: ${mode === 'cupom' ? '2mm' : '8mm'}; }
-        }
-      `}</style>
+  // 🧾 Formata CPF/CNPJ automaticamente
+  const formatCpfCnpj = (value?: string | null) => {
+    if (!value) return '';
+    const digits = value.replace(/\D/g, '');
+    if (digits.length === 11) {
+      // CPF
+      return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    }
+    if (digits.length === 14) {
+      // CNPJ
+      return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+    }
+    return value; // retorna original se não for CPF nem CNPJ
+  };
 
+  const cpfCnpj = formatCpfCnpj(order.customer_cnpj_cpf);
+
+  return (
+    <div className={`print-root ${mode === 'cupom' ? 'mode-cupom' : 'mode-a4'}`}>
       <div className="wrap">
         <PrintActions autoPrint={autoPrint} mode={mode as 'a4' | 'cupom'} />
 
         <header>
           <div>
             <div className="brand">{order.company?.name ?? 'Minha Distribuidora'}</div>
-            <div style={{ fontSize: mode === 'cupom' ? '11px' : '13px', color: 'var(--muted)' }}>
-              {order.company?.address || ''}
-            </div>
+            <div className="address">{order.company?.address || ''}</div>
           </div>
           <div className="meta">
             Pedido #{String(order.id).slice(0, 8).toUpperCase()}
@@ -102,20 +94,23 @@ export default async function PrintOrderPage({ params, searchParams }: Props) {
         </header>
 
         <section className="customer">
-          <div style={{ fontWeight: 600 }}>{order.customer_name}</div>
-          <div style={{ color: 'var(--muted)' }}>
+          <div style={{ fontWeight: 600 }}>
+            {order.customer_name}
+            {cpfCnpj && ` · ${cpfCnpj}`}
+          </div>
+          <div className="muted">
             {order.customer_email}
             {order.customer_phone ? ` · ${order.customer_phone}` : ''}
           </div>
           {order.delivery_type === 'DELIVERY' && (
-            <div style={{ color: 'var(--muted)', marginTop: 6 }}>
+            <div className="muted" style={{ marginTop: 6 }}>
               {address?.street || address?.address || '-'}
               {address?.city ? `, ${address.city}` : ''}
               {address?.state ? ` - ${address.state}` : ''}
               {address?.zip_code ? ` · CEP ${address.zip_code}` : ''}
             </div>
           )}
-          <div style={{ color: 'var(--muted)', marginTop: 6 }}>
+          <div className="muted" style={{ marginTop: 6 }}>
             Entrega: {order.delivery_type} · Pagamento: {order.payment_method} · Status: {order.status}
           </div>
         </section>
@@ -137,8 +132,8 @@ export default async function PrintOrderPage({ params, searchParams }: Props) {
                   <tr key={it.id}>
                     <td>{name}</td>
                     <td>{it.quantity}</td>
-                    <td>{formatMoney(Number(it.unit_price ?? it.unitPrice ?? 0))}</td>
-                    <td style={{ textAlign: 'right' }}>{formatMoney(Number(it.total_price ?? it.totalPrice ?? 0))}</td>
+                    <td>{formatMoney(it.unit_price)}</td>
+                    <td style={{ textAlign: 'right' }}>{formatMoney(it.total_price)}</td>
                   </tr>
                 );
               })}
@@ -150,11 +145,11 @@ export default async function PrintOrderPage({ params, searchParams }: Props) {
               <span>Subtotal</span>
               <strong>{formatMoney(Number(order.subtotal ?? 0))}</strong>
             </div>
-            <div className="row">
+            {/* <div className="row">
               <span>Taxa de Entrega</span>
               <strong>{formatMoney(Number(order.delivery_fee ?? 0))}</strong>
-            </div>
-            <div className="row" style={{ fontSize: mode === 'cupom' ? '13px' : '16px' }}>
+            </div> */}
+            <div className="row total-row">
               <span>Total</span>
               <strong>{formatMoney(Number(order.total_amount ?? order.total_amount ?? 0))}</strong>
             </div>
@@ -163,7 +158,7 @@ export default async function PrintOrderPage({ params, searchParams }: Props) {
           {order.notes && <div className="notes">Obs: {order.notes}</div>}
         </section>
 
-        <footer style={{ marginTop: 12, textAlign: 'center', color: 'var(--muted)', fontSize: mode === 'cupom' ? '11px' : '13px' }}>
+        <footer className="footer">
           Obrigado pela preferência!
         </footer>
       </div>

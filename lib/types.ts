@@ -46,6 +46,7 @@ export interface Product {
   sku?: string;
   base_price: number;
   image_url?: string;
+  stock_quantity: number;
   active: boolean;
   sort_order?: number;
   created_at: Date;
@@ -71,10 +72,11 @@ export interface ProductVariant {
   id: string;
   product_id: string;
   name: string;
+  sku?: string;
   volume?: string;
   unit_type?: string;
   price_modifier: number;
-  stock_quantity?: number;
+  stock_quantity: number;
   active: boolean;
   created_at: Date;
   updated_at: Date;
@@ -85,8 +87,9 @@ export interface Order {
   company_id: string;
   user_id?: string;
   customer_name: string;
-  customer_email: string;
-  customer_phone: string;
+  customer_email?: string;
+  customer_phone?: string;
+  customer_cnpj_cpf?: string;
   delivery_address?: any;
   delivery_type: DeliveryType;
   payment_method: PaymentMethod;

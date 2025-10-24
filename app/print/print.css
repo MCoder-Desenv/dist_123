@@ -1,0 +1,259 @@
+:root {
+  --muted: #666;
+  --text: #111;
+  --brand: #111827;
+}
+
+body {
+  font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+  color: var(--text);
+  margin: 0;
+  padding: 0;
+}
+
+/* Modo A4 (padrão) */
+.mode-a4 .wrap {
+  max-width: 720px;
+  margin: 16px auto;
+  padding: 24px;
+}
+
+.mode-a4 header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.mode-a4 .brand {
+  font-weight: 700;
+  font-size: 20px;
+}
+
+.mode-a4 .address {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.mode-a4 .meta {
+  font-size: 13px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.mode-a4 .customer {
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.mode-a4 table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.mode-a4 th,
+.mode-a4 td {
+  padding: 8px 0;
+  text-align: left;
+}
+
+.mode-a4 thead th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.mode-a4 tbody tr + tr td {
+  border-top: 1px dashed #e6e6e6;
+}
+
+.mode-a4 .totals {
+  margin-top: 10px;
+  font-size: 14px;
+}
+
+.mode-a4 .totals .row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+
+.mode-a4 .totals .total-row {
+  font-size: 16px;
+}
+
+.mode-a4 .notes {
+  margin-top: 8px;
+  color: var(--muted);
+  white-space: pre-wrap;
+  font-size: 13px;
+}
+
+.mode-a4 .footer {
+  margin-top: 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Modo Cupom (80mm) */
+.mode-cupom .wrap {
+  max-width: 280px;
+  margin: 8px auto;
+  padding: 12px;
+  font-size: 11px;
+}
+
+.mode-cupom header {
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.mode-cupom .brand {
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+
+.mode-cupom .address {
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.mode-cupom .meta {
+  font-size: 10px;
+  color: var(--muted);
+  text-align: center;
+  margin-top: 4px;
+}
+
+.mode-cupom .customer {
+  margin-bottom: 8px;
+  font-size: 11px;
+  border-top: 1px dashed #ccc;
+  border-bottom: 1px dashed #ccc;
+  padding: 6px 0;
+}
+
+.mode-cupom .customer > div {
+  margin: 2px 0;
+}
+
+.mode-cupom table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+  margin-top: 6px;
+}
+
+.mode-cupom th,
+.mode-cupom td {
+  padding: 4px 0;
+  text-align: left;
+}
+
+.mode-cupom thead th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 10px;
+  border-bottom: 1px dashed #ccc;
+}
+
+.mode-cupom tbody tr + tr td {
+  border-top: 1px dashed #e6e6e6;
+}
+
+.mode-cupom .totals {
+  margin-top: 8px;
+  font-size: 11px;
+  border-top: 1px dashed #ccc;
+  padding-top: 6px;
+}
+
+.mode-cupom .totals .row {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+}
+
+.mode-cupom .totals .total-row {
+  font-size: 13px;
+  font-weight: 700;
+  border-top: 1px dashed #ccc;
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+.mode-cupom .notes {
+  margin-top: 6px;
+  color: var(--muted);
+  white-space: pre-wrap;
+  font-size: 10px;
+  border-top: 1px dashed #ccc;
+  padding-top: 6px;
+}
+
+.mode-cupom .footer {
+  margin-top: 12px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 10px;
+  border-top: 1px dashed #ccc;
+  padding-top: 8px;
+}
+
+/* Estilos comuns */
+.muted {
+  color: var(--muted);
+}
+
+h1 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+}
+
+.print-actions {
+  margin: 12px 0;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.btn {
+  background: #111827;
+  color: white;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+@media print {
+  .print-actions {
+    display: none;
+  }
+
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .mode-a4 {
+    @page {
+      size: A4;
+      margin: 8mm;
+    }
+  }
+
+  .mode-cupom {
+    @page {
+      size: 80mm auto;
+      margin: 2mm;
+    }
+  }
+}

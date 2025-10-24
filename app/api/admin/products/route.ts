@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession, getCompanyFilter, getCompanyIdForCreate, hasPermission } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { uploadFile, deleteFile, renameFile } from '@/lib/storage';
+import { sanitizeFilename } from '@/lib/files';
 import path from 'path';
 import sharp from 'sharp';
 
@@ -50,6 +51,10 @@ export async function POST(request: NextRequest) {
     const description = formData.get('description') as string | null;
     const category_id = formData.get('category_id') as string;
     const sku = formData.get('sku') as string | null;
+    const volume = formData.get('volume') as string | null;
+    const unit_type = formData.get('unit_type') as string | null;
+    // Quantidade em estoque -> parseInt (fallback 0)
+    const stock_quantity = parseInt(String(formData.get('stock_quantity') ?? '0'), 10) || 0;
     const base_price = parseFloat(formData.get('base_price') as string);
     const active = formData.get('active') === 'true';
     const imageFile = formData.get('image') as File | null;
@@ -60,8 +65,13 @@ export async function POST(request: NextRequest) {
     if (imageFile) {
       const buffer = Buffer.from(await imageFile.arrayBuffer());
       await sharp(buffer).metadata(); // valida imagem
+
       const ext = path.extname(imageFile.name) || '.jpg';
-      const tempKey = `products/temp/${Date.now()}-${Math.random().toString(36).slice(2, 9)}${ext}`;
+      const base = path.basename(imageFile.name, ext);
+      const safeBase = sanitizeFilename(base) || `${Date.now()}`; // fallback
+
+      // include safeBase in temp key so we can preserve original name later
+      const tempKey = `products/temp/${Date.now()}_${safeBase}${ext}`;
       await uploadFile(buffer, tempKey);
       image_url = tempKey; // será movido ao final
     }
@@ -72,6 +82,9 @@ export async function POST(request: NextRequest) {
         company_id: session.user.company_id!,
         category_id,
         name,
+        volume,
+        stock_quantity,
+        unit_type,
         description,
         sku,
         base_price,
@@ -83,7 +96,10 @@ export async function POST(request: NextRequest) {
     // Mover imagem temporária para pasta final
     if (image_url && image_url.startsWith('products/temp/')) {
       const ext = path.extname(image_url);
-      const finalKey = `products/${product.id}/image${ext}`;
+      // Recupera o basename e remove o prefixo timestamp_ se existir
+      const tempBasename = path.basename(image_url); // e.g. "169..._foto-do-produto.jpg"
+      const safeBase = tempBasename.replace(/^[0-9]+_/, '').replace(ext, '');
+      const finalKey = `products/${product.id}/${safeBase}${ext}`;
       await renameFile(image_url, finalKey);
       await prisma.product.update({
         where: { id: product.id },
@@ -100,7 +116,10 @@ export async function POST(request: NextRequest) {
             let imageUrl = v.image_url || null;
             if (imageUrl && imageUrl.startsWith('products/temp/')) {
               const ext = path.extname(imageUrl) || '.jpg';
-              const finalKey = `products/${product.id}/variants/${Date.now()}-${Math.random().toString(36).slice(2, 9)}${ext}`;
+              // preserve base name from temp key (remove leading timestamp_ if present)
+              const tempBasename = path.basename(imageUrl);
+              const safeBase = tempBasename.replace(/^[0-9]+_/, '').replace(ext, '') || `${Date.now()}`;
+              const finalKey = `products/${product.id}/variants/${Date.now()}_${safeBase}${ext}`;
               await renameFile(imageUrl, finalKey);
               imageUrl = finalKey;
             }
@@ -108,6 +127,7 @@ export async function POST(request: NextRequest) {
               product_id: product.id,
               name: v.name,
               volume: v.volume || null,
+              sku: v.sku || null,
               unit_type: v.unit_type || null,
               price_modifier: v.price_modifier || 0,
               stock_quantity: v.stock_quantity || 0,

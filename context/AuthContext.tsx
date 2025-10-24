@@ -29,10 +29,6 @@ export function AuthProvider({ children, companyId }: { children: React.ReactNod
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    console.log('AuthProvider mounted with key', key);
-    }, [key]);
-
-  useEffect(() => {
     if (typeof window === 'undefined') {
       setLoading(false);
       return;

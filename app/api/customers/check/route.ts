@@ -4,25 +4,26 @@ import { prisma } from '@/lib/db';
 
 export async function POST(request: Request) {
   try {
-    const { email, company_id } = await request.json();
+    const { cnpj_cpf, company_id } = await request.json();
 
-    if (!email || !company_id) {
+    if (!cnpj_cpf || !company_id) {
       return NextResponse.json(
-        { error: 'Email e company_id são obrigatórios' },
+        { error: 'CNPJ e company_id são obrigatórios' },
         { status: 400 }
       );
     }
 
     const customer = await prisma.customer.findUnique({
       where: {
-        company_id_email: {
+        company_id_cnpj_cpf: {
           company_id,
-          email: email.toLowerCase(),
+          cnpj_cpf,
         },
       },
       select: {
         id: true,
         email: true,
+        cnpj_cpf: true,
         name: true,
       },
     });

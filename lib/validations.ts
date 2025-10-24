@@ -2,6 +2,13 @@
 import { z } from 'zod';
 import { UserRole, PaymentMethod, DeliveryType, EntryType, EntryStatus } from '@prisma/client';
 
+const parseDateOrNull = (val: unknown) => {
+  if (val === null || val === undefined || val === '') return null;
+  // aceita strings "YYYY-MM-DD" ou ISO
+  const d = new Date(String(val));
+  return isNaN(d.getTime()) ? null : d;
+};
+
 // ===== AUTH VALIDATIONS =====
 
 export const loginSchema = z.object({
@@ -61,15 +68,17 @@ export const productSchema = z.object({
   category_id: z.string().uuid('ID da categoria inválido'),
   sku: z.string().optional(),
   base_price: z.number().positive('Preço deve ser positivo'),
+  stock_quantity: z.number().default(0),
   active: z.boolean()
 });
 
 export const variantSchema = z.object({
   name: z.string().min(1, 'Nome da variação é obrigatório'),
+  sku: z.string().optional(),
   volume: z.string().optional(),
   unit_type: z.string().optional(),
   price_modifier: z.number().default(0),
-  stock_quantity: z.number().optional()
+  stock_quantity: z.number().default(0),
 });
 
 // ===== ORDER VALIDATIONS =====
@@ -77,7 +86,8 @@ export const variantSchema = z.object({
 export const orderSchema = z.object({
   customer_id: z.string().uuid().optional(),
   customer_name: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres'),
-  customer_email: z.string().email('Email inválido'),
+  customer_email: z.string().optional().nullable(),
+  customer_cnpj_cpf: z.string(),
   customer_phone: z.string().optional().default(''),
   delivery_address: z.any().optional().nullable(),
   delivery_type: z.nativeEnum(DeliveryType),
@@ -103,8 +113,8 @@ export const financialEntrySchema = z.object({
   description: z.string().min(2, 'Descrição deve ter pelo menos 2 caracteres'),
   category: z.string().optional(),
   payment_method: z.nativeEnum(PaymentMethod).optional(),
-  due_date: z.date().optional(),
-  paid_date: z.date().optional(),
+  due_date: z.preprocess(parseDateOrNull, z.date().nullable().optional()),
+  paid_date: z.preprocess(parseDateOrNull, z.date().nullable().optional()),
   status: z.nativeEnum(EntryStatus)
 });
 

@@ -80,7 +80,9 @@ enum UserRole {
 model Customer {
   id              String   @id @default(uuid())
   company_id      String
-  email           String
+  active          Boolean  @default(true)
+  cnpj_cpf        String @unique
+  email           String?
   password        String   // Hash bcrypt
   name            String
   phone           String?
@@ -91,7 +93,7 @@ model Customer {
   company         Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
   orders          Order[]  @relation("CustomerOrders")
 
-  @@unique([company_id, email])
+  @@unique([company_id, cnpj_cpf])
   @@map("customers")
 }
 
@@ -121,10 +123,13 @@ model Product {
   company_id      String
   category_id     String
   name            String
+  volume    String?  // Ex: "350ml", "1L", "2L"
+  unit_type String?  // Ex: "unidade", "caixa"
   description     String?
   sku             String?  // Código de barras/SKU
   base_price      Decimal  @db.Decimal(10,2) // Preço base
   image_url       String?
+  stock_quantity Int @default(0) @map("stock_quantity")
   active          Boolean  @default(true)
   sort_order      Int?     @default(0)
   created_at      DateTime @default(now())
@@ -146,9 +151,10 @@ model ProductVariant {
   name            String   // Ex: "350ml", "Caixa c/ 12 unidades"
   volume          String?  // Ex: "350ml", "1L", "2L"
   unit_type       String?  // Ex: "unidade", "caixa"
+  sku             String?  // Código de barras/SKU
   price_modifier  Decimal  @db.Decimal(10,2) @default(0) // Modificador do preço base
   image_url       String?  // URL da imagem específica da variante
-  stock_quantity  Int?     @default(0)
+  stock_quantity  Int      @default(0)
   active          Boolean  @default(true)
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
@@ -167,15 +173,17 @@ model Order {
   company_id            String
   user_id               String?      // Usuário que criou (interno) ou null (público)
   customer_id           String?      // Cliente (público) que criou
-  customer_name         String
-  customer_email        String
-  customer_phone        String
+  customer_name         String?
+  customer_email        String?
+  customer_phone        String?
+  customer_cnpj_cpf     String
   delivery_address      Json?        // Endereço de entrega completo
   delivery_type         DeliveryType @default(DELIVERY)
   payment_method        PaymentMethod
   subtotal              Decimal      @db.Decimal(10,2)
   delivery_fee          Decimal      @db.Decimal(10,2) @default(0)
   total_amount          Decimal      @db.Decimal(10,2)
+  stockDeducted Boolean @default(false) @map("stock_deducted")
   status                OrderStatus  @default(RECEBIDO)
   notes                 String?      // Observações do cliente
   created_at            DateTime     @default(now())

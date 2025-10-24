@@ -30,25 +30,43 @@ interface Customer {
   phone?: string | null;
 }
 
+interface OrderItem {
+  id: string;
+  quantity: number;
+  unit_price: number;
+  total_price?: number;
+  product: {
+    name: string;
+    image_url?: string | null;
+  };
+  variant?: {
+    name?: string | null;
+    image_url?: string | null;
+  } | null;
+}
+
 interface Order {
   id: string;
   created_at: string;
   status: string;
   total_amount: number;
+  subtotal?: number;
+  delivery_fee?: number;
   delivery_type: string;
-  order_items: Array<{
-    id: string;
-    quantity: number;
-    unit_price: number;
-    product: {
-      name: string;
-      image_url?: string | null;
-    };
-    variant?: {
-      name?: string | null;
-      image_url?: string | null;
-    } | null;
-  }>;
+  payment_method?: string;
+  notes?: string | null;
+  customer_name?: string | null;
+  customer_email?: string | null;
+  customer_phone?: string | null;
+  customer_cnpj_cpf?: string | null;
+  delivery_address?: {
+    address?: string;
+    number?: string;
+    city?: string;
+    state?: string;
+    zip_code?: string;
+  } | null;
+  order_items: OrderItem[];
 }
 
 /** Normaliza/encode e retorna a URL pública para usar em <Image src> ou <img> */
@@ -65,6 +83,11 @@ function getFileUrl(key?: string | null) : string | null {
   return `/api/public-files/${encoded}`;
 }
 
+function formatCurrency(value: number | undefined | null) {
+  if (value == null || isNaN(value)) return 'R$ 0,00';
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+}
+
 export function CustomerAccount({ company }: { company: Company }) {
   const router = useRouter();
   const { user: authUser, loading: authLoading, logout: authLogout } = useAuth();
@@ -76,6 +99,9 @@ export function CustomerAccount({ company }: { company: Company }) {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [reorderLoading, setReorderLoading] = useState(false);
 
+  const [showOrderDetailsModal, setShowOrderDetailsModal] = useState(false);
+  const [selectedOrderDetails, setSelectedOrderDetails] = useState<Order | null>(null);
+
   const [cepLoading, setCepLoading] = useState(false);
 
   const [reorderForm, setReorderForm] = useState({
@@ -86,6 +112,7 @@ export function CustomerAccount({ company }: { company: Company }) {
     state: '',
     zip_code: '',
     notes: '',
+    payment_method: ''
   });
 
   useEffect(() => {
@@ -129,7 +156,8 @@ export function CustomerAccount({ company }: { company: Company }) {
     router.push(`/empresa/${company.slug}`);
   };
 
-  const handleReorder = (order: Order) => {
+  const handleReorder = (e: React.MouseEvent, order: Order) => {
+    e.stopPropagation();
     setSelectedOrder(order);
     // reset form or initialize based on order/customer if desired
     setReorderForm({
@@ -140,8 +168,19 @@ export function CustomerAccount({ company }: { company: Company }) {
       state: '',
       zip_code: '',
       notes: '',
+      payment_method: ''
     });
     setShowReorderModal(true);
+  };
+
+  const openOrderDetails = (order: Order) => {
+    setSelectedOrderDetails(order);
+    setShowOrderDetailsModal(true);
+  };
+
+  const closeOrderDetails = () => {
+    setSelectedOrderDetails(null);
+    setShowOrderDetailsModal(false);
   };
 
   const submitReorder = async () => {
@@ -182,6 +221,7 @@ export function CustomerAccount({ company }: { company: Company }) {
                 }
               : null,
           notes: reorderForm.notes,
+          payment_method: reorderForm.payment_method
         }),
       });
 
@@ -288,10 +328,7 @@ export function CustomerAccount({ company }: { company: Company }) {
       {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          {/* Layout responsivo:
-              - mobile (default): coluna -> (linha: logo+nome) / (botões empilhados abaixo)
-              - sm+: linha -> logo+nome (left) e ações (right)
-          */}
+          {/* Layout responsivo */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between">
             <div className="flex items-center">
               {logoSrc ? (
@@ -365,12 +402,22 @@ export function CustomerAccount({ company }: { company: Company }) {
             ) : (
               <div className="space-y-4">
                 {orders.map((order) => (
-                  <div key={order.id} className="border rounded-lg p-4">
+                  <div
+                    key={order.id}
+                    className="border rounded-lg p-4 cursor-pointer"
+                    onClick={() => openOrderDetails(order)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') openOrderDetails(order);
+                    }}
+                  >
                     <div className="flex items-start justify-between mb-3">
                       <div>
                         <p className="font-medium">Pedido #{order.id.slice(0, 8)}</p>
                         <p className="text-sm text-gray-600">
-                          {new Date(order.created_at).toLocaleDateString('pt-BR')}
+                          {new Date(order.created_at).toLocaleDateString('pt-BR')} {' - '}
+                          {new Date(order.created_at).toLocaleTimeString('pt-BR')}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -400,7 +447,6 @@ export function CustomerAccount({ company }: { company: Company }) {
                               </div>
                             ) : (
                               <div className="w-10 h-10 bg-gray-200 rounded flex items-center justify-center text-gray-500">
-                                {/* pequeno placeholder */}
                                 <Package className="h-4 w-4" />
                               </div>
                             )}
@@ -418,7 +464,11 @@ export function CustomerAccount({ company }: { company: Company }) {
                         <span className="text-sm text-gray-600">Total: </span>
                         <span className="font-bold">R$ {parseFloat(order.total_amount.toString()).toFixed(2)}</span>
                       </div>
-                      <Button size="sm" variant="outline" onClick={() => handleReorder(order)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={(e) => handleReorder(e, order)}
+                      >
                         <ShoppingCart className="h-4 w-4 mr-2" />
                         Recomprar
                       </Button>
@@ -466,7 +516,7 @@ export function CustomerAccount({ company }: { company: Company }) {
                 </Select>
               </div>
 
-              {/* CEP logo abaixo do Tipo de Entrega, com botão de busca ao lado */}
+              {/* CEP e endereço */}
               {reorderForm.delivery_type === 'DELIVERY' && (
                 <>
                   <div className="grid grid-cols-12 gap-4 items-end">
@@ -491,7 +541,6 @@ export function CustomerAccount({ company }: { company: Company }) {
                     </div>
                   </div>
 
-                  {/* Endereço e N° */}
                   <div className="grid grid-cols-12 gap-4 items-end">
                     <div className="col-span-8">
                       <Label htmlFor="address">Endereço *</Label>
@@ -513,7 +562,6 @@ export function CustomerAccount({ company }: { company: Company }) {
                     </div>
                   </div>
 
-                  {/* Cidade / Estado */}
                   <div className="grid grid-cols-12 gap-4">
                     <div className="col-span-8">
                       <Label htmlFor="city">Cidade *</Label>
@@ -537,6 +585,25 @@ export function CustomerAccount({ company }: { company: Company }) {
                   </div>
                 </>
               )}
+
+              <div>
+                <Label htmlFor="payment_method">Forma de Pagamento *</Label>
+                <Select
+                  value={reorderForm.payment_method}
+                  onValueChange={(value) => setReorderForm((prev) => ({ ...prev, payment_method: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PIX">PIX</SelectItem>
+                    <SelectItem value="PROMISSORIA">Promissória</SelectItem>
+                    <SelectItem value="CARTAO_ENTREGA">Cartão na Entrega</SelectItem>
+                    <SelectItem value="DINHEIRO">Dinheiro</SelectItem>
+                    <SelectItem value="BOLETO">Boleto</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
               <div>
                 <Label htmlFor="notes">Observações</Label>
@@ -565,6 +632,7 @@ export function CustomerAccount({ company }: { company: Company }) {
                       state: '',
                       zip_code: '',
                       notes: '',
+                      payment_method: ''
                     });
                   }}
                   disabled={reorderLoading}
@@ -573,6 +641,127 @@ export function CustomerAccount({ company }: { company: Company }) {
                 </Button>
               </div>
             </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Order Details Modal */}
+      <Dialog open={showOrderDetailsModal} onOpenChange={(open) => { if (!open) closeOrderDetails(); }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Detalhes do Pedido</DialogTitle>
+          </DialogHeader>
+
+          {selectedOrderDetails ? (
+            <div className="space-y-4">
+              <div className="flex items-start justify-between">
+                <div> 
+                  <p className="font-medium">Pedido #{selectedOrderDetails.id.slice(0, 8)}</p>
+                  <p className="text-sm text-gray-600">
+                    {new Date(selectedOrderDetails.created_at).toLocaleDateString('pt-BR')} {' '}
+                    {new Date(selectedOrderDetails.created_at).toLocaleTimeString('pt-BR')}
+                  </p>
+                </div>
+                <div>
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(selectedOrderDetails.status)}`}>
+                    {getStatusLabel(selectedOrderDetails.status)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="border rounded-lg p-4">
+                <h4 className="font-medium mb-3">Itens</h4>
+                <div className="space-y-3">
+                  {selectedOrderDetails.order_items.map((item) => {
+                    const imageUrl =
+                      getFileUrl(item.variant?.image_url ?? null) ||
+                      getFileUrl(item.product.image_url ?? null);
+
+                    return (
+                      <div key={item.id} className="flex gap-4 items-center">
+                        <div className="w-16 h-16 relative rounded overflow-hidden bg-gray-100">
+                          {imageUrl ? (
+                            <Image src={imageUrl} alt={item.product.name} fill sizes="64px" className="object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-gray-400">
+                              <Package className="h-5 w-5" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="font-medium">{item.product.name}</div>
+                              {item.variant && <div className="text-sm text-gray-500">{item.variant.name}</div>}
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm text-gray-600">{formatCurrency(item.unit_price)}</div>
+                              <div className="text-sm text-gray-600">x{item.quantity}</div>
+                            </div>
+                          </div>
+                          <div className="mt-2 text-sm text-gray-700">Total: <span className="font-medium">{formatCurrency(item.unit_price * item.quantity)}</span></div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-4 border-t pt-3">
+                  <div className="flex justify-between text-sm text-gray-700">
+                    <div>Subtotal</div>
+                    <div>{formatCurrency(selectedOrderDetails.subtotal ?? selectedOrderDetails.order_items.reduce((s, it) => s + (it.unit_price * it.quantity), 0))}</div>
+                  </div>
+                  {/* <div className="flex justify-between text-sm text-gray-700">
+                    <div>Frete</div>
+                    <div>{formatCurrency(selectedOrderDetails.delivery_fee ?? 0)}</div>
+                  </div> */}
+                  <div className="flex justify-between text-base font-semibold mt-2">
+                    <div>Total</div>
+                    <div>{formatCurrency(selectedOrderDetails.total_amount)}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="border rounded-lg p-4">
+                  <h4 className="font-medium mb-2">Cliente</h4>
+                  <div className="text-sm text-gray-700">{selectedOrderDetails.customer_name || '-'}</div>
+                  <div className="text-sm text-gray-700">{selectedOrderDetails.customer_email || '-'}</div>
+                  <div className="text-sm text-gray-700">{selectedOrderDetails.customer_phone || '-'}</div>
+                  <div className="text-sm text-gray-700">{selectedOrderDetails.customer_cnpj_cpf || '-'}</div>
+                </div>
+
+                <div className="border rounded-lg p-4">
+                  <h4 className="font-medium mb-2">Entrega</h4>
+                  <div className="text-sm text-gray-700">Tipo: {selectedOrderDetails.delivery_type}</div>
+                  {selectedOrderDetails.delivery_address ? (
+                    <>
+                      <div className="text-sm text-gray-700 mt-2">
+                        {selectedOrderDetails.delivery_address.address}{selectedOrderDetails.delivery_address.number ? `, ${selectedOrderDetails.delivery_address.number}` : ''}
+                      </div>
+                      <div className="text-sm text-gray-700">
+                        {selectedOrderDetails.delivery_address.city} - {selectedOrderDetails.delivery_address.state}
+                      </div>
+                      <div className="text-sm text-gray-700">{selectedOrderDetails.delivery_address.zip_code}</div>
+                    </>
+                  ) : (
+                    <div className="text-sm text-gray-500 mt-2">Sem endereço de entrega</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="border rounded-lg p-4">
+                <h4 className="font-medium mb-2">Pagamento & Observações</h4>
+                <div className="text-sm text-gray-700">Método: {selectedOrderDetails.payment_method || '-'}</div>
+                <div className="text-sm text-gray-700 mt-2">Observações: {selectedOrderDetails.notes || '-'}</div>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={closeOrderDetails}>Fechar</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="py-6 text-center">Carregando...</div>
           )}
         </DialogContent>
       </Dialog>
